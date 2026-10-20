@@ -228,6 +228,56 @@ from PySide6.QtWidgets import (
     QPushButton, QSpinBox, QWidget,
 )
 
+
+# Official Lucide icons, pinned to c29c276f16590cf017126671535ad8c792be64d8.
+# https://github.com/lucide-icons/lucide — ISC / MIT notices retained below.
+LUCIDE_LICENSE = 'ISC License\n\nCopyright (c) 2026 Lucide Icons and Contributors\n\nPermission to use, copy, modify, and/or distribute this software for any\npurpose with or without fee is hereby granted, provided that the above\ncopyright notice and this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES\nWITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF\nMERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR\nANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES\nWHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN\nACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF\nOR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.\n\n---\n\nThe following Lucide icons are derived from the Feather project:\n\nairplay, alert-circle, alert-octagon, alert-triangle, aperture, arrow-down-circle, arrow-down-left, arrow-down-right, arrow-down, arrow-left-circle, arrow-left, arrow-right-circle, arrow-right, arrow-up-circle, arrow-up-left, arrow-up-right, arrow-up, at-sign, calendar, cast, check, chevron-down, chevron-left, chevron-right, chevron-up, chevrons-down, chevrons-left, chevrons-right, chevrons-up, circle, clipboard, clock, code, columns, command, compass, corner-down-left, corner-down-right, corner-left-down, corner-left-up, corner-right-down, corner-right-up, corner-up-left, corner-up-right, crosshair, database, divide-circle, divide-square, dollar-sign, download, external-link, feather, frown, hash, headphones, help-circle, info, italic, key, layout, life-buoy, link-2, link, loader, lock, log-in, log-out, maximize, meh, minimize, minimize-2, minus-circle, minus-square, minus, monitor, moon, more-horizontal, more-vertical, move, music, navigation-2, navigation, octagon, pause-circle, percent, plus-circle, plus-square, plus, power, radio, rss, search, server, share, shopping-bag, sidebar, smartphone, smile, square, table-2, tablet, target, terminal, trash-2, trash, triangle, tv, type, upload, x-circle, x-octagon, x-square, x, zoom-in, zoom-out\n\nThe MIT License (MIT) (for the icons listed above)\n\nCopyright (c) 2013-present Cole Bemis\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the "Software"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n'
+LUCIDE_SVGS = {
+    "capture": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M3 7V5a2 2 0 0 1 2-2h2\" />\n  <path d=\"M17 3h2a2 2 0 0 1 2 2v2\" />\n  <path d=\"M21 17v2a2 2 0 0 1-2 2h-2\" />\n  <path d=\"M7 21H5a2 2 0 0 1-2-2v-2\" />\n</svg>\n",
+    "move": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M12 2v20\" />\n  <path d=\"m15 19-3 3-3-3\" />\n  <path d=\"m19 9 3 3-3 3\" />\n  <path d=\"M2 12h20\" />\n  <path d=\"m5 9-3 3 3 3\" />\n  <path d=\"m9 5 3-3 3 3\" />\n</svg>\n",
+    "pen": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z\" />\n  <path d=\"m15 5 4 4\" />\n</svg>\n",
+    "line": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M5 12h14\" />\n</svg>\n",
+    "arrow": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M13 5H19V11\" />\n  <path d=\"M19 5L5 19\" />\n</svg>\n",
+    "rect": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />\n</svg>\n",
+    "ellipse": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <circle cx=\"12\" cy=\"12\" r=\"10\" />\n</svg>\n",
+    "text": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M12 4v16\" />\n  <path d=\"M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2\" />\n  <path d=\"M9 20h6\" />\n</svg>\n",
+    "highlight": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"m9 11-6 6v3h9l3-3\" />\n  <path d=\"m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4\" />\n</svg>\n",
+    "mask": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />\n  <line x1=\"9\" x2=\"15\" y1=\"15\" y2=\"9\" />\n</svg>\n",
+    "number": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M11 5h10\" />\n  <path d=\"M11 12h10\" />\n  <path d=\"M11 19h10\" />\n  <path d=\"M4 4h1v5\" />\n  <path d=\"M4 9h2\" />\n  <path d=\"M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02\" />\n</svg>\n",
+    "undo": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M9 14 4 9l5-5\" />\n  <path d=\"M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11\" />\n</svg>\n",
+    "redo": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"m15 14 5-5-5-5\" />\n  <path d=\"M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13\" />\n</svg>\n",
+    "copy": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\" />\n  <path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\" />\n</svg>\n",
+    "save": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z\" />\n  <path d=\"M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7\" />\n  <path d=\"M7 3v4a1 1 0 0 0 1 1h7\" />\n</svg>\n",
+    "cancel": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M18 6 6 18\" />\n  <path d=\"m6 6 12 12\" />\n</svg>\n",
+    "folder": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2\" />\n</svg>\n",
+    "open": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\" />\n  <path d=\"M10 4v4\" />\n  <path d=\"M2 8h20\" />\n  <path d=\"M6 4v4\" />\n</svg>\n",
+    "quit": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"m16 17 5-5-5-5\" />\n  <path d=\"M21 12H9\" />\n  <path d=\"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4\" />\n</svg>\n",
+    "language": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"m5 8 6 6\" />\n  <path d=\"m4 14 6-6 2-3\" />\n  <path d=\"M2 5h12\" />\n  <path d=\"M7 2h1\" />\n  <path d=\"m22 22-5-10-5 10\" />\n  <path d=\"M14 18h6\" />\n</svg>\n",
+    "settings": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M10 5H3\" />\n  <path d=\"M12 19H3\" />\n  <path d=\"M14 3v4\" />\n  <path d=\"M16 17v4\" />\n  <path d=\"M21 12h-9\" />\n  <path d=\"M21 19h-5\" />\n  <path d=\"M21 5h-7\" />\n  <path d=\"M8 10v4\" />\n  <path d=\"M8 12H3\" />\n</svg>\n"
+}
+
+from functools import lru_cache
+from PySide6.QtCore import QByteArray, QSize
+from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtSvg import QSvgRenderer
+
+
+@lru_cache(maxsize=80)
+def ui_icon(name, color="#eeeaf8"):
+    """Render once per name/color, then let QIcon choose the DPI-appropriate size."""
+    source = LUCIDE_SVGS[name]
+    icon = QIcon()
+    for mode, stroke in ((QIcon.Mode.Normal, color), (QIcon.Mode.Disabled, "#777286")):
+        renderer = QSvgRenderer(QByteArray(source.replace("currentColor", stroke).encode("utf-8")))
+        for size in (16, 20, 24, 32, 40, 48, 64):
+            pixmap = QPixmap(size, size)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            renderer.render(painter)
+            painter.end()
+            icon.addPixmap(pixmap, mode)
+    return icon
+
 TOOLS = [
     ("move", "↔", "V"), ("pen", "✎", "P"), ("line", "╱", "L"),
     ("arrow", "↗", "A"), ("rect", "□", "R"), ("ellipse", "○", "E"),
@@ -293,9 +343,11 @@ class CaptureOverlay(QWidget):
         tools.setSpacing(2)
         self.tool_buttons = {}
         for key, glyph, shortcut in TOOLS:
-            button = QPushButton(glyph)
+            button = QPushButton()
             button.setFixedSize(35, 34)
-            button.setFont(QFont("Segoe UI Symbol", 15))
+            button.setIcon(ui_icon(key))
+            button.setIconSize(QSize(20, 20))
+            button.setStyleSheet("padding:0; min-height:0;")
             button.setToolTip(self.t(key))
             button.setAccessibleName(self.t(key))
             button.setCheckable(True)
@@ -304,8 +356,11 @@ class CaptureOverlay(QWidget):
             tools.addWidget(button)
             self.tool_buttons[key] = button
         for glyph, key, callback in [("↶", "undo", self.undo), ("↷", "redo", self.redo)]:
-            button = QPushButton(glyph)
+            button = QPushButton()
             button.setFixedSize(34, 34)
+            button.setIcon(ui_icon(key))
+            button.setIconSize(QSize(20, 20))
+            button.setStyleSheet("padding:0; min-height:0;")
             button.setToolTip(self.t(key))
             button.setAccessibleName(self.t(key))
             button.clicked.connect(callback)
@@ -334,6 +389,8 @@ class CaptureOverlay(QWidget):
         bottom.addStretch()
         for key in ("copy", "save", "cancel"):
             button = QPushButton(self.t(key))
+            button.setIcon(ui_icon(key))
+            button.setIconSize(QSize(16, 16))
             button.setObjectName(key)
             button.clicked.connect(lambda checked=False, k=key: self.complete(k))
             bottom.addWidget(button)
@@ -346,7 +403,7 @@ class CaptureOverlay(QWidget):
         for c, button in self.color_buttons.items():
             border = "#ffffff" if c == color else "#5b5868"
             button.setStyleSheet(
-                f"background:{c}; border:2px solid {border}; border-radius:11px; padding:0;")
+                f"background:{c}; border:2px solid {border}; border-radius:11px; padding:0; min-height:0;")
 
     def set_stroke(self, value):
         self.stroke = value
@@ -604,10 +661,11 @@ QMessageBox { background: #20202c; }
 """
 
 
-def app_icon():
-    pix = QPixmap(64, 64)
+def app_icon(size=64):
+    pix = QPixmap(size, size)
     pix.fill(Qt.GlobalColor.transparent)
     p = QPainter(pix)
+    p.scale(size / 64, size / 64)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     gradient = QLinearGradient(0, 0, 64, 64)
     gradient.setColorAt(0, QColor("#b991ff"))
@@ -668,8 +726,8 @@ class MainWindow(QMainWindow):
         self.quitting = False
         self.setWindowTitle("LumaShot")
         self.setWindowIcon(app_icon())
-        self.setMinimumSize(800, 570)
-        self.resize(860, 600)
+        self.setMinimumSize(800, 480)
+        self.resize(860, 500)
         self.hotkeys = Hotkeys(self.start_capture)
         QApplication.instance().installNativeEventFilter(self.hotkeys)
         self.tray = QSystemTrayIcon(self.windowIcon(), self)
@@ -708,6 +766,9 @@ class MainWindow(QMainWindow):
         brand.setObjectName("brand")
         header.addWidget(brand)
         header.addStretch()
+        language_icon = QLabel()
+        language_icon.setPixmap(ui_icon("language", "#a8a5bb").pixmap(18, 18))
+        header.addWidget(language_icon)
         header.addWidget(self.label("language", "muted"))
         language = QComboBox()
         language.setAccessibleName(self.t("language"))
@@ -727,7 +788,9 @@ class MainWindow(QMainWindow):
         hero_layout.addWidget(self.label("intro", "muted", True))
         hero_layout.addSpacing(8)
         row = QHBoxLayout()
-        self.capture_button = QPushButton("＋   " + self.t("capture"))
+        self.capture_button = QPushButton(self.t("capture"))
+        self.capture_button.setIcon(ui_icon("capture", "#ffffff"))
+        self.capture_button.setIconSize(QSize(22, 22))
         self.capture_button.setAccessibleName(self.t("capture"))
         self.capture_button.setObjectName("primary")
         self.capture_button.setMinimumHeight(56)
@@ -742,7 +805,13 @@ class MainWindow(QMainWindow):
         hero_layout.addLayout(row)
         hero_layout.addWidget(self.label("screen_note", "muted", True))
         layout.addWidget(hero)
-        layout.addWidget(self.label("settings", "section"))
+        settings_row = QHBoxLayout()
+        settings_icon = QLabel()
+        settings_icon.setPixmap(ui_icon("settings", "#b9a5e0").pixmap(19, 19))
+        settings_row.addWidget(settings_icon)
+        settings_row.addWidget(self.label("settings", "section"))
+        settings_row.addStretch()
+        layout.addLayout(settings_row)
         folder_row = QHBoxLayout()
         folder_text = QVBoxLayout()
         folder_text.addWidget(self.label("folder"))
@@ -752,34 +821,20 @@ class MainWindow(QMainWindow):
         folder_text.addWidget(self.folder_label)
         folder_row.addLayout(folder_text, 1)
         choose = QPushButton(self.t("browse"))
+        choose.setIcon(ui_icon("folder"))
+        choose.setIconSize(QSize(18, 18))
         choose.clicked.connect(self.choose_folder)
         folder_row.addWidget(choose)
         layout.addLayout(folder_row)
         layout.addStretch()
-        self.status = self.label("ready", "eyebrow")
-        self.status.setWordWrap(True)
-        layout.addWidget(self.status)
-        bottom = QHBoxLayout()
-        bottom.addWidget(self.label("local", "muted"))
-        bottom.addStretch()
-        quit_button = QPushButton(self.t("quit"))
-        quit_button.clicked.connect(self.quit_app)
-        bottom.addWidget(quit_button)
-        layout.addLayout(bottom)
-        if QSystemTrayIcon.isSystemTrayAvailable():
-            layout.addWidget(self.label("trayhint", "muted", True))
         self.setCentralWidget(root)
-        if not labels:
-            self.status.setText(self.t("no_hotkey"))
-        elif "Print Screen" not in labels:
-            self.status.setText(self.t("print_busy", key=labels[0]))
 
     def rebuild_tray(self):
         old_menu = self.tray.contextMenu()
         menu = QMenu(self)
         for key, callback in [("capture", self.start_capture),
                               ("open", self.show_main), ("quit", self.quit_app)]:
-            action = QAction(self.t(key), self)
+            action = QAction(ui_icon(key), self.t(key), self)
             action.triggered.connect(callback)
             menu.addAction(action)
         self.tray.setContextMenu(menu)
@@ -821,7 +876,6 @@ class MainWindow(QMainWindow):
         self.capture_pending = True
         self.restore_window = self.isVisible()
         self.capture_button.setEnabled(False)
-        self.status.setText(self.t("capture_busy"))
         self.hide()
         # Let Windows finish removing the main window and tray menu.
         QTimer.singleShot(260, self.capture_screens)
@@ -906,10 +960,9 @@ class MainWindow(QMainWindow):
         else:
             message = self.t("cancelled")
         self.close_overlays()
-        self.status.setText(message)
         if self.restore_window:
             self.show_main()
-        elif action != "cancel":
+        if action != "cancel" and self.tray.isVisible():
             self.tray.showMessage("LumaShot", message,
                                   QSystemTrayIcon.MessageIcon.Information, 2000)
 
