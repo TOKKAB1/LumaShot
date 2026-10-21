@@ -1,1 +1,2 @@
 PySide6==6.12.0
+SoundCard==0.4.6

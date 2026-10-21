@@ -10,8 +10,8 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from LumaShot import CaptureOverlay
 from LumaShot import History, Mark, render_crop
-from LumaShot import LANGUAGES, STRINGS
-from LumaShot import MainWindow, BASE_STYLE, Hotkeys, native_hotkey
+from LumaShot import LANGUAGES, STRINGS, COLORS
+from LumaShot import MainWindow, BASE_STYLE, Hotkeys, native_hotkey, JsonSettings
 
 APP = QApplication.instance() or QApplication([])
 if APP.platformName() == "offscreen":
@@ -34,9 +34,14 @@ class CaptureTests(unittest.TestCase):
             self.assertTrue(overlay.rect().contains(overlay.panel.geometry()))
             self.assertTrue(overlay.rect().contains(overlay.actions.geometry()))
             self.assertFalse(overlay.panel.geometry().intersects(overlay.actions.geometry()))
+            overlay.toggle_palette()
+            self.assertTrue(overlay.rect().contains(overlay.palette.geometry()))
+            overlay.palette.hide()
         self.assertNotIn("ellipse", overlay.tool_buttons)
         self.assertNotIn("mask", overlay.tool_buttons)
         self.assertFalse(overlay.palette.isVisible())
+        from PySide6.QtWidgets import QPushButton
+        self.assertEqual(len(overlay.palette.findChildren(QPushButton)), 24)
         QTest.mouseClick(overlay.color_button, Qt.MouseButton.LeftButton)
         self.assertTrue(overlay.palette.isVisible())
         QTest.mouseClick(overlay.color_buttons["#facc15"], Qt.MouseButton.LeftButton)
@@ -54,7 +59,42 @@ class CaptureTests(unittest.TestCase):
             self.assertEqual(keys, set(STRINGS[language]))
             for key in keys:
                 self.assertTrue(STRINGS[language][key])
-            self.assertEqual(len(STRINGS[language]["colors"]), 6)
+            self.assertEqual(len(STRINGS[language]["colors"]), len(COLORS))
+
+    def test_default_move_and_enter_keeps_capture_open_but_confirms_text(self):
+        pix = QPixmap(APP.primaryScreen().size())
+        pix.fill(QColor("white"))
+        overlay = CaptureOverlay(APP.primaryScreen(), pix, "ro")
+        overlay.show()
+        APP.processEvents()
+        results = []
+        overlay.finished.connect(lambda action, image: results.append(action))
+        self.assertEqual(overlay.tool, "move")
+        self.assertTrue(overlay.tool_buttons["move"].isChecked())
+        self.assertFalse(overlay.tool_buttons["arrow"].isChecked())
+        QTest.mousePress(overlay, Qt.MouseButton.LeftButton, pos=QPoint(40, 40))
+        QTest.mouseMove(overlay, QPoint(400, 300))
+        QTest.mouseRelease(overlay, Qt.MouseButton.LeftButton, pos=QPoint(400, 300))
+        QTest.mousePress(overlay, Qt.MouseButton.LeftButton, pos=QPoint(100, 100))
+        QTest.mouseMove(overlay, QPoint(120, 110))
+        QTest.mouseRelease(overlay, Qt.MouseButton.LeftButton, pos=QPoint(120, 110))
+        self.assertEqual(overlay.selection, QRectF(60, 50, 360, 260))
+        self.assertFalse(overlay.history.items)
+        for key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            QTest.keyClick(overlay, key)
+            self.assertFalse(results)
+            self.assertTrue(overlay.isVisible())
+        overlay.set_tool("text")
+        overlay.begin_text(QPointF(100, 100))
+        overlay.editor.setText("Notă de test")
+        QTest.keyClick(overlay.editor, Qt.Key.Key_Return)
+        self.assertIsNone(overlay.editor)
+        self.assertEqual(overlay.history.items[-1].text, "Notă de test")
+        self.assertFalse(results)
+        self.assertTrue(overlay.isVisible())
+        QTest.keyClick(overlay, Qt.Key.Key_C, Qt.KeyboardModifier.ControlModifier)
+        self.assertEqual(results, ["copy"])
+        overlay.close()
 
     def test_crop_preserves_physical_resolution(self):
         source = QImage(300, 200, QImage.Format.Format_RGB32)
@@ -133,8 +173,8 @@ class CaptureTests(unittest.TestCase):
 class ApplicationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        settings = QSettings(os.path.join(self.temp.name, "settings.ini"), QSettings.Format.IniFormat)
-        self.settings_patch = patch("LumaShot.QSettings", return_value=settings)
+        settings = JsonSettings(os.path.join(self.temp.name, "settings.json"), migrate=False)
+        self.settings_patch = patch("LumaShot.JsonSettings", return_value=settings)
         self.hotkey_patch = patch("LumaShot.ctypes.windll.user32.RegisterHotKey", return_value=0)
         self.settings_patch.start()
         self.hotkey_patch.start()
@@ -150,6 +190,7 @@ class ApplicationTests(unittest.TestCase):
     def tearDown(self):
         APP.removeNativeEventFilter(self.window.hotkeys)
         APP.removeNativeEventFilter(self.window.full_hotkeys)
+        APP.removeNativeEventFilter(self.window.record_hotkeys)
         self.window.quitting = True
         self.window.close_overlays()
         self.window.hide()
@@ -191,7 +232,7 @@ class ApplicationTests(unittest.TestCase):
                 self.window.change_theme(theme)
                 APP.processEvents()
                 self.assertEqual(self.window.settings.value("theme"), theme)
-                self.assertEqual(self.window.tabs.count(), 3)
+                self.assertEqual(self.window.tabs.count(), 4)
                 self.assertEqual(self.window.theme_combo.currentData(), theme)
                 self.assertEqual(self.window.icon_color, "#edf5f3" if theme == "dark" else "#193d43")
                 from PySide6.QtWidgets import QLineEdit
@@ -226,6 +267,47 @@ class ApplicationTests(unittest.TestCase):
             self.assertFalse(self.window.option("full_hotkey_enabled"))
             self.assertEqual(self.window.hotkeys.registered, region)
             self.window.hotkeys.close()
+
+    def test_video_shortcut_persists_and_cannot_conflict_with_either_screenshot_shortcut(self):
+        with patch("LumaShot.ctypes.windll.user32.RegisterHotKey", return_value=1), \
+             patch("LumaShot.ctypes.windll.user32.UnregisterHotKey", return_value=1):
+            for mode, editor, checkbox, key in (
+                (False, self.window.hotkey_editor, self.window.hotkey_enabled, "Ctrl+Alt+K"),
+                (True, self.window.full_hotkey_editor, self.window.full_hotkey_enabled, "Ctrl+Alt+L"),
+                ("record", self.window.record_hotkey_editor, self.window.record_hotkey_enabled, "Ctrl+Alt+V")):
+                checkbox.setChecked(True)
+                editor.setKeySequence(QKeySequence(key))
+                self.window.apply_hotkey(mode)
+            self.assertEqual(self.window.settings.value("record_hotkey"), "Ctrl+Alt+V")
+            self.assertEqual(self.window.record_hotkeys.registered[0][0], 0x5B80)
+            with patch("LumaShot.QMessageBox.warning") as warning:
+                self.window.record_hotkey_editor.setKeySequence(QKeySequence("Ctrl+Alt+K"))
+                self.window.apply_hotkey("record")
+                self.window.record_hotkey_editor.setKeySequence(QKeySequence("Ctrl+Alt+L"))
+                self.window.apply_hotkey("record")
+                self.window.full_hotkey_editor.setKeySequence(QKeySequence("Ctrl+Alt+V"))
+                self.window.apply_hotkey(True)
+                self.assertEqual(warning.call_count, 3)
+            self.assertEqual(self.window.settings.value("record_hotkey"), "Ctrl+Alt+V")
+            self.window.record_hotkey_enabled.setChecked(False)
+            self.window.apply_hotkey("record")
+            self.assertFalse(self.window.record_hotkeys.registered)
+            self.assertFalse(self.window.option("record_hotkey_enabled"))
+
+    def test_video_shortcut_respects_editor_focus_and_drives_current_bar(self):
+        from unittest.mock import MagicMock
+        with patch.object(self.window, "start_capture") as capture:
+            with patch("LumaShot.QApplication.focusWidget", return_value=self.window.record_hotkey_editor):
+                self.window.hotkey_capture("record")
+                capture.assert_not_called()
+            with patch("LumaShot.QApplication.focusWidget", return_value=None):
+                self.window.hotkey_capture("record")
+                capture.assert_called_once_with("record")
+                bar = MagicMock()
+                self.window.record_controls = bar
+                self.window.hotkey_capture("record")
+                bar.primary_action.assert_called_once()
+                self.window.record_controls = None
 
     def test_editing_either_shortcut_does_not_capture(self):
         with patch("LumaShot.QApplication.focusWidget", return_value=self.window.full_hotkey_editor), \
@@ -307,6 +389,7 @@ class ApplicationTests(unittest.TestCase):
 
     def test_cursor_option_only_composites_cursor_monitor(self):
         first, second = self.fake_screen(), self.fake_screen("second", 640)
+        self.window.capture_mode = "full"
         self.window.settings.setValue("include_cursor", True)
         with patch("LumaShot.QApplication.screenAt", return_value=second), \
              patch("LumaShot.QApplication.screens", return_value=[first, second]), \

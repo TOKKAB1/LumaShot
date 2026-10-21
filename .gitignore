@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+build/
+dist/
+*.spec
+.DS_Store
+Thumbs.db
+LumaShot.settings.json*
+LumaShot_*.mp4
