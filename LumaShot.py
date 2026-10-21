@@ -868,6 +868,7 @@ from PySide6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel,
     QMainWindow, QMenu, QMessageBox, QPushButton, QSystemTrayIcon,
     QVBoxLayout, QWidget, QKeySequenceEdit, QTabWidget, QCheckBox, QFormLayout, QSlider, QToolTip,
+    QStyle, QStyleOptionButton,
 )
 
 # Accent and light surfaces follow RTLite 3.2.8's palette.
@@ -919,6 +920,7 @@ QTabBar::tab {{ background: transparent; padding: 10px 19px; border-bottom: 2px 
 QTabBar::tab:selected {{ color: {c['accent_text']}; border-bottom: 2px solid {c['accent']}; font-weight: 600; }}
 QCheckBox {{ spacing: 9px; padding: 5px 0; }}
 QCheckBox::indicator {{ width: 16px; height: 16px; }}
+ContrastCheckBox::indicator {{ width: 20px; height: 20px; background: transparent; border: none; }}
 QSpinBox {{ background: {c['input']}; border: 1px solid {c['border']}; border-radius: 5px; padding: 6px; }}
 QSpinBox::up-button, QSpinBox::down-button {{ border: none; width: 18px; }}
 QWidget:disabled {{ color: {c['muted']}; }}
@@ -1155,6 +1157,37 @@ def capture_cursor(pixmap):
             user.DestroyIcon(icon)
 
 
+class ContrastCheckBox(QCheckBox):
+    """Keep native checkbox interaction and draw a clear, scalable indicator."""
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        option = QStyleOptionButton()
+        self.initStyleOption(option)
+        rect = self.style().subElementRect(QStyle.SubElement.SE_CheckBoxIndicator, option, self)
+        dark = self.palette().color(QPalette.ColorRole.Window).lightness() < 128
+        border = "#9bbdb3" if dark else "#58796f"
+        if option.state & QStyle.StateFlag.State_MouseOver:
+            border = "#7ad7ba" if dark else "#0b7258"
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if not self.isEnabled():
+            painter.setOpacity(0.5)
+        painter.translate(rect.topLeft())
+        painter.scale(rect.width() / 20, rect.height() / 20)
+        painter.setPen(QPen(QColor("#118769" if self.isChecked() else border), 2))
+        painter.setBrush(QColor("#118769") if self.isChecked()
+                         else self.palette().color(QPalette.ColorRole.Base))
+        painter.drawRoundedRect(QRectF(1, 1, 18, 18), 4, 4)
+        if self.isChecked():
+            painter.setPen(QPen(QColor("white"), 2.3, Qt.PenStyle.SolidLine,
+                                Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            tick = QPainterPath(QPointF(5, 10))
+            tick.lineTo(8.5, 13.5)
+            tick.lineTo(15, 6.5)
+            painter.drawPath(tick)
+        painter.end()
+
+
 class ChoiceBox(QComboBox):
     """A consistent vector chevron in both themes, without extra image files."""
     def paintEvent(self, event):
@@ -1284,7 +1317,7 @@ class MainWindow(QMainWindow):
             lambda index: self.change_theme(self.theme_combo.itemData(index)))
         form.addRow(self.t("theme"), self.theme_combo)
         for key, default in (("notifications", True), ("remember_area", False), ("include_cursor", False)):
-            checkbox = QCheckBox(self.t(key))
+            checkbox = ContrastCheckBox(self.t(key))
             checkbox.setToolTip(wrapped_tip(self.t("tip_" + key)))
             checkbox.setChecked(self.option(key, default))
             checkbox.toggled.connect(lambda checked, k=key: self.settings.setValue(k, checked))
@@ -1311,7 +1344,7 @@ class MainWindow(QMainWindow):
             prefix = "full" if full else "capture"
             key = "full_hotkey" if full else "hotkey_label"
             row = QHBoxLayout()
-            enabled = QCheckBox(self.t(key))
+            enabled = ContrastCheckBox(self.t(key))
             enabled.setToolTip(wrapped_tip(self.t("tip_enable_hotkey")))
             enabled.setChecked(self.option(prefix + "_hotkey_enabled", not full))
             row.addWidget(enabled, 1)
