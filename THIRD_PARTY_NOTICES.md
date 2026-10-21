@@ -1,5 +1,7 @@
 # Third-party notices
 
+The MIT license in LICENSE covers the original LumaShot code, documentation and app artwork. It does not relicense the third-party materials below. Keep these notices when redistributing those materials. The Lucide notices and the original application license are embedded in LumaShot.py for single-file redistribution.
+
 ## Lucide icons
 
 Source: https://github.com/lucide-icons/lucide/tree/c29c276f16590cf017126671535ad8c792be64d8
