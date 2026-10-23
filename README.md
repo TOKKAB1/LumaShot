@@ -5,7 +5,7 @@
 <p align="center"><strong>A screenshot. Just how you need it.</strong></p>
 <p align="center">Select, annotate and record your screen.<br>A compact Windows app with a petrol-green interface, light and dark themes, and three languages.</p>
 <p align="center">
-  <img alt="Version 0.4.0" src="https://img.shields.io/badge/version-0.4.0-118769">
+  <img alt="Version v5" src="https://img.shields.io/badge/version-v5-118769">
   <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4">
   <img alt="Python 3.10 or newer" src="https://img.shields.io/badge/Python-3.10%2B-3776AB">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-118769"></a>
@@ -23,7 +23,7 @@
   <a href="https://github.com/TOKKAB1/LumaShot/issues">Report an issue</a>
 </p>
 
-![LumaShot 0.4.0 in English, light theme](assets/interface-en.png)
+![LumaShot 5.0.0 in English, light theme](assets/interface-en.png)
 
 ## What you can do
 
@@ -35,11 +35,14 @@
 | Edit annotations with Shift and object handles | Review before saving or discarding | Optional startup with Windows |
 | Copy, or save as PNG/JPEG | Save to the default folder or choose a location | Portable JSON preferences |
 
-Captures stay local. LumaShot has **no account, cloud upload or telemetry**.
+Captures and OCR stay local. LumaShot has **no account, cloud upload or telemetry**. GitHub is contacted only for a manual or enabled startup update check and an update download you request.
 
 ## Install on Windows
 
-Download the installer ZIP from [the latest release](https://github.com/TOKKAB1/LumaShot/releases/latest), extract it and run **LumaShot-Setup-…-Windows-x64.exe**. Python is not required. Setup offers Romanian, Russian and English, installs for the current user and lets you add a desktop shortcut. LumaShot is also available as Python source below.
+Download the latest published Windows installer from [GitHub Releases](https://github.com/TOKKAB1/LumaShot/releases/latest).
+Extract the ZIP, if supplied, and run the installer. Python is not required.
+The v5 installer is named **LumaShot-Setup-5.0.0-Windows-x64.exe**.
+Setup offers RO/RU/EN, per-user installation and an optional desktop shortcut.
 
 ## Run from Python
 
@@ -113,6 +116,46 @@ Video uses **MP4 / H.264, targeting 20 fps**, at the selected region's native re
 
 Audio uses the default Windows microphone and playback device. After changing devices in Windows, switch the corresponding source off and on. Muted or paused sources release their audio input. Closing the preview asks whether to save or discard; quitting during recording waits for that choice too.
 
+## Extract text from a screenshot
+
+Select a region as usual, then click **Extract text** in the bottom action bar,
+beside Copy and Save. There is no extra OCR hotkey. A separate window lets you
+review or correct the result. Select part of the text and click **Copy text**,
+or leave it unselected to copy everything. Closing that window returns to the
+same capture, with its crop and annotations preserved.
+
+![OCR button on the capture toolbar](assets/ocr-toolbar.png)
+
+![Local OCR window](assets/ocr-en-light.png)
+
+OCR reads the original selected pixels, without the toolbars or your annotations.
+It uses Windows' built-in OCR locally through Windows PowerShell; no additional
+Python package or OCR executable is needed. Available recognition languages depend
+on the OCR language packs installed in Windows, independently of the interface
+language. Choose an available language in the OCR window. If no packs are installed,
+the app explains how to open Windows language settings. Blurry or small text may
+need correction; handwriting and complex layouts are not guaranteed.
+
+## Updates from GitHub
+
+Open **Updates → Check for updates**. Optional checking at startup is **off by
+default** and can be enabled there. Only stable releases from TOKKAB1/LumaShot are
+used. The application does not download or install without your choice, and no
+screenshots, OCR text or personal preferences are sent to GitHub.
+
+![Update preferences](assets/updates-en-light.png)
+
+When a newer version exists, read its changes and choose **Download update**.
+The download is checked against the SHA-256 digest supplied by GitHub. Both an
+installer EXE and a ZIP containing that installer are supported. Then choose
+**Install and close LumaShot** to open the interactive installer after the app
+exits. Finish any capture, recording or unsaved video review first. Closing the
+update window cancels a download and removes its temporary files.
+
+This updates the installed Windows application. Python source can still be
+downloaded separately. To publish future compatible updates, see the
+[maintainer's update guide](docs/UPDATES.md).
+
 ## Preferences and tray
 
 | Tab | Options |
@@ -121,6 +164,7 @@ Audio uses the default Windows microphone and playback device. After changing de
 | Global shortcuts | Independently enable, disable and change area, full-screen and video shortcuts |
 | Format | PNG/JPEG, JPEG quality 1–100, full-screen editing or immediate save |
 | Record video | Default microphone and computer-audio switches |
+| Updates | Manual checking and optional startup checks for GitHub releases |
 
 Preferences save automatically; confirm shortcut changes with **Apply**. The full-screen shortcut starts disabled, with `Ctrl+Shift+F10` suggested. Occupied shortcuts produce an error while the previous working combination is retained.
 
@@ -140,7 +184,7 @@ Settings are stored atomically in **LumaShot.settings.json beside the script or 
 ## Current limits
 
 - Windows only. Mixed-DPI layouts, HDR, physical audio devices and device permissions need checking on the target PC. Very large regions depend on encoder limits and performance.
-- Protected video/audio may not be capturable. OCR, scrolling capture, automatic window selection and magnifier/zoom are not included.
+- Protected video/audio may not be capturable. Scrolling capture, automatic window selection and magnifier/zoom are not included.
 - Recordings stay in temporary storage until saved or discarded; the preview is not a crash-recovery system.
 - Windows clipboard history or cloud sync, if enabled, is managed by Windows.
 

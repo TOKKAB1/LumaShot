@@ -4,7 +4,7 @@
 
 [English](../README.md) · **Română** · [Русский](README.ru.md)
 
-Aplicație pentru Windows cu selecție pe mai multe monitoare, adnotări și înregistrare video. Versiunea **0.4.0** include teme luminoasă și întunecată în verde petrol, interfață RO/RU/EN și setări portabile. Capturile rămân locale: fără cont, încărcare online sau telemetrie.
+Aplicație pentru Windows cu selecție pe mai multe monitoare, adnotări și înregistrare video. Versiunea **v5 (5.0.0)** include teme luminoasă și întunecată în verde petrol, interfață RO/RU/EN și setări portabile. Capturile rămân locale: fără cont, încărcare online sau telemetrie.
 
 ![LumaShot în română](../assets/interface-ro.png)
 
@@ -12,7 +12,10 @@ Aplicație pentru Windows cu selecție pe mai multe monitoare, adnotări și în
 
 [**Descarcă pentru Windows**](https://github.com/TOKKAB1/LumaShot/releases/latest)
 
-Descarcă ZIP-ul cu installerul din ultima versiune, extrage-l și pornește **LumaShot-Setup-…-Windows-x64.exe**. Nu ai nevoie de Python. Installerul este disponibil în RO/RU/EN, instalează pentru utilizatorul curent și oferă o scurtătură opțională pe desktop.
+Descarcă installerul publicat în Releases și extrage ZIP-ul, dacă este cazul.
+Pentru v5, fișierul se numește **LumaShot-Setup-5.0.0-Windows-x64.exe**.
+Nu ai nevoie de Python. Instalarea este disponibilă în RO/RU/EN, pentru
+utilizatorul curent, cu scurtătură opțională pe desktop.
 
 ## Pornire din Python
 
@@ -73,6 +76,42 @@ Video: **MP4 / H.264, țintă 20 cadre/s**, la rezoluția zonei alese. Dimensiun
 
 Se folosesc dispozitivele implicite Windows. După schimbarea unui dispozitiv în Windows, oprește și repornește comutatorul său din bară. Oprirea unei surse sau pauza eliberează intrarea audio. Închiderea previzualizării cere o decizie; ieșirea în timpul înregistrării așteaptă aceeași alegere. Filmările sunt temporare până le salvezi.
 
+## Text din captură (OCR)
+
+Selectează zona ca de obicei, apoi apasă **Extrage textul** din bara de jos, lângă
+Copiază și Salvează. Nu este necesară o scurtătură OCR. Fereastra nouă permite
+verificarea și corectarea rezultatului. Selectează doar o parte și apasă
+**Copiază textul**, sau nu selecta nimic pentru copierea întregului text.
+Închiderea ferestrei te întoarce la aceeași captură și păstrează adnotările.
+
+![Recunoaștere locală a textului](../assets/ocr-ro-light.png)
+
+Se recunosc pixelii originali ai zonei, fără bare sau desene adăugate. Procesarea
+este locală, folosind OCR-ul Windows prin Windows PowerShell, fără biblioteci
+Python noi. Limbile de recunoaștere depind de pachetele OCR instalate în Windows,
+independent de limba interfeței. Poți alege limba din fereastră; dacă nu există
+pachete, primești explicația și un buton către setările de limbă Windows.
+Textul neclar sau mic poate necesita corectare; scrisul de mână și aranjamentele
+complexe nu sunt garantate.
+
+## Actualizări de pe GitHub
+
+În **Actualizări**, apasă **Verifică actualizările**. Verificarea la pornire este
+opțională și implicit oprită. Se folosesc doar versiunile stabile din
+TOKKAB1/LumaShot; capturile, textul OCR și setările personale nu sunt trimise.
+
+![Setările pentru actualizări](../assets/updates-ro-light.png)
+
+Când există o versiune mai nouă, vezi modificările și poți alege **Descarcă
+actualizarea**. Fișierul se verifică folosind suma SHA-256 furnizată de GitHub.
+Sunt acceptate installerul EXE sau un ZIP care îl conține. Apoi **Instalează și
+închide LumaShot** pornește installerul interactiv după închiderea aplicației.
+Încheie mai întâi captura sau filmarea și salvează ori renunță la ciornă.
+Închiderea ferestrei anulează descărcarea și șterge fișierele temporare.
+
+Funcția actualizează aplicația Windows instalată; sursa Python rămâne disponibilă
+separat. Pentru publicarea actualizărilor viitoare vezi [ghidul](UPDATES.md).
+
 ## Setări și tray
 
 | Filă | Opțiuni |
@@ -81,6 +120,7 @@ Se folosesc dispozitivele implicite Windows. După schimbarea unui dispozitiv î
 | Scurtături globale | Activare/dezactivare și combinații independente pentru zonă, ecran complet și video |
 | Format | PNG/JPEG, calitate JPEG 1–100, editor sau salvare imediată pentru ecran complet |
 | Înregistrare video | Preferințe separate pentru microfon și sunetul calculatorului |
+| Actualizări | Verificare manuală și opțională la pornire pentru versiuni de pe GitHub |
 
 Setările se salvează automat; scurtăturile se confirmă cu **Aplică**. Scurtătura pentru ecran complet este inițial dezactivată, cu propunerea `Ctrl+Shift+F10`. Dacă o combinație este ocupată, aplicația păstrează combinația anterioară funcțională.
 
@@ -100,7 +140,7 @@ Preferințele se scriu în **LumaShot.settings.json lângă script sau EXE**. Do
 ## Limite și verificări
 
 - Doar Windows. Monitoarele cu scalări diferite, HDR, dispozitivele audio și permisiunile trebuie verificate pe PC-ul folosit. Zonele foarte mari depind de encoder și performanță.
-- OCR, capturile cu derulare, selectarea automată a ferestrelor și lupa/zoomul nu sunt incluse. Conținutul protejat poate să nu fie capturabil.
+- Capturile cu derulare, selectarea automată a ferestrelor și lupa/zoomul nu sunt incluse. Conținutul protejat poate să nu fie capturabil.
 - Previzualizarea nu este un sistem de recuperare a filmării după o închidere neașteptată.
 - Istoricul și sincronizarea clipboardului, dacă sunt activate, sunt gestionate de Windows.
 

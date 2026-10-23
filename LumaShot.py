@@ -1,7 +1,7 @@
 # Original LumaShot code and artwork: MIT. Bundled icons retain their own notices.
 LUMASHOT_LICENSE = 'MIT License\n\nCopyright (c) 2026 TOKKAB1\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the "Software"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n'
 
-# LumaShot 0.4.0 — Python + PySide6. Run: python LumaShot.py
+# LumaShot 5.0.0 — Python + PySide6. Run: python LumaShot.py
 """All user-visible copy, shared by the dashboard, tray and capture editor."""
 
 LANGUAGES = {"ro": "Română", "ru": "Русский", "en": "English"}
@@ -539,6 +539,7 @@ from PySide6.QtSvg import QSvgRenderer
 
 # Simple original transport glyphs, using the same stroke style as the toolbar.
 LUCIDE_SVGS.update({
+    "ocr": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 3H3v4m14-4h4v4M3 17v4h4m14-4v4h-4M8 8h8m-4 0v8m-3 0h6"/></svg>',
     "pause": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>',
     "resume": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M7 4 20 12 7 20Z"/></svg>',
 })
@@ -617,6 +618,7 @@ class CaptureOverlay(QWidget):
         self.stroke = 3
         self.editor = None
         self.editing_text_index = None
+        self.ocr_dialog = None
         self.selected_mark = None
         self.shift_pressed = False
         self.setMouseTracking(True)
@@ -648,6 +650,8 @@ class CaptureOverlay(QWidget):
         button.setIconSize(QSize(18, 18))
         shortcut = {"copy": "Ctrl+C", "save": "Ctrl+S", "cancel": "Esc"}.get(key)
         tip = self.t(key) + ("\n" + shortcut if shortcut else "")
+        if key == "ocr":
+            tip += "\n" + self.t("tip_ocr")
         if key == "move":
             tip += "\n" + self.t("object_hint")
         button.setToolTip(wrapped_tip(tip))
@@ -721,6 +725,9 @@ class CaptureOverlay(QWidget):
         bottom.setSpacing(1)
         for key, callback in (("undo", self.undo), ("redo", self.redo)):
             bottom.addWidget(self.tool_button(key, callback))
+        self.ocr_button = self.tool_button("ocr", self.start_ocr)
+        self.ocr_button.setObjectName("ocr")
+        bottom.addWidget(self.ocr_button)
         for key in ("copy", "save", "cancel"):
             button = self.tool_button(key, lambda checked=False, k=key: self.complete(k))
             button.setObjectName(key)
@@ -1119,6 +1126,24 @@ class CaptureOverlay(QWidget):
                                       self.color, self.stroke, text))
             self.setFocus()
             self.update()
+
+    def start_ocr(self):
+        if self.selection.isEmpty():
+            return
+        if self.ocr_dialog is not None:
+            self.ocr_dialog.raise_()
+            self.ocr_dialog.activateWindow()
+            return
+        # Recognize the original selected pixels, without toolbars or annotations.
+        image = render_crop(self.screen_image, self.selection, [], self.scale)
+        self.ocr_dialog = OcrDialog(image, self.lang, self.theme, self)
+        self.ocr_dialog.finished.connect(self.ocr_finished)
+        self.ocr_dialog.open()
+
+    def ocr_finished(self, result):
+        self.ocr_dialog = None
+        self.activateWindow()
+        self.setFocus()
 
     def complete(self, action):
         if action == "cancel":
@@ -2761,6 +2786,728 @@ class VideoReview(QDialog):
                 self.save_button.showMenu()
 
 
+# Windows' built-in OCR is called through its supported WinRT API in Windows
+# PowerShell 5.1. No image or recognized text is uploaded or logged.
+import base64
+from PySide6.QtWidgets import QPlainTextEdit, QProgressBar
+from PySide6.QtGui import QDesktopServices
+
+OCR_SCRIPT = r'''
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+$reply = @{ok=$false; code='backend'; languages=@()}
+$stream = $null
+$bitmap = $null
+try {
+    Add-Type -AssemblyName System.Runtime.WindowsRuntime
+    [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType=WindowsRuntime] > $null
+    [Windows.Storage.StorageFile, Windows.Storage, ContentType=WindowsRuntime] > $null
+    [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics.Imaging, ContentType=WindowsRuntime] > $null
+    [Windows.Graphics.Imaging.SoftwareBitmap, Windows.Graphics.Imaging, ContentType=WindowsRuntime] > $null
+    [Windows.Globalization.Language, Windows.Globalization, ContentType=WindowsRuntime] > $null
+    $script:asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+        $_.Name -eq 'AsTask' -and $_.IsGenericMethod -and $_.GetParameters().Count -eq 1 -and
+        $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+    } | Select-Object -First 1
+    function Await($operation, [Type]$resultType) {
+        $task = $script:asTask.MakeGenericMethod($resultType).Invoke($null, @($operation))
+        return $task.GetAwaiter().GetResult()
+    }
+    $available = [Windows.Media.Ocr.OcrEngine]::AvailableRecognizerLanguages
+    $reply.languages = @($available | ForEach-Object { @{tag=$_.LanguageTag; name=$_.NativeName} })
+    if ($available.Count -eq 0) {
+        $reply.code = 'no_languages'
+    } else {
+        $engine = $null
+        if ($env:LUMASHOT_OCR_LANGUAGE) {
+            $language = [Windows.Globalization.Language]::new($env:LUMASHOT_OCR_LANGUAGE)
+            $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($language)
+        } else {
+            $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+            if ($null -eq $engine) {
+                $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($available[0])
+            }
+        }
+        if ($null -eq $engine) { throw 'The selected OCR language is unavailable.' }
+        $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($env:LUMASHOT_OCR_IMAGE)) ([Windows.Storage.StorageFile])
+        $stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+        $decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+        $transform = [Windows.Graphics.Imaging.BitmapTransform]::new()
+        $limit = [Windows.Media.Ocr.OcrEngine]::MaxImageDimension
+        $factor = [Math]::Min(1.0, $limit / [double][Math]::Max($decoder.PixelWidth, $decoder.PixelHeight))
+        $transform.ScaledWidth = [uint32][Math]::Max(1, [Math]::Floor($decoder.PixelWidth * $factor))
+        $transform.ScaledHeight = [uint32][Math]::Max(1, [Math]::Floor($decoder.PixelHeight * $factor))
+        $bitmap = Await ($decoder.GetSoftwareBitmapAsync(
+            [Windows.Graphics.Imaging.BitmapPixelFormat]::Bgra8,
+            [Windows.Graphics.Imaging.BitmapAlphaMode]::Ignore, $transform,
+            [Windows.Graphics.Imaging.ExifOrientationMode]::IgnoreExifOrientation,
+            [Windows.Graphics.Imaging.ColorManagementMode]::DoNotColorManage)) ([Windows.Graphics.Imaging.SoftwareBitmap])
+        $result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
+        $reply.ok = $true
+        $reply.code = ''
+        $reply.text = ($result.Lines | ForEach-Object { $_.Text }) -join "`n"
+        $reply.language = $engine.RecognizerLanguage.LanguageTag
+    }
+} catch {
+    $reply.detail = $_.Exception.Message
+} finally {
+    if ($null -ne $bitmap) { $bitmap.Dispose() }
+    if ($null -ne $stream) { $stream.Dispose() }
+}
+$json = ConvertTo-Json -InputObject $reply -Depth 4 -Compress
+[Console]::Out.Write([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json)))
+'''
+
+
+class OcrFailure(Exception):
+    def __init__(self, code, detail=""):
+        super().__init__(detail or code)
+        self.code, self.detail = code, detail
+
+
+def recognize_text(image, language="", cancelled=None, timeout=30):
+    """Recognize immutable selected pixels locally; bound time and clean temp files."""
+    if sys.platform != "win32":
+        raise OcrFailure("unavailable")
+    executable = Path(os.environ.get("SystemRoot", "C:/Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    if not executable.is_file():
+        raise OcrFailure("unavailable")
+    if image.isNull():
+        raise OcrFailure("image")
+    cancelled = cancelled or threading.Event()
+    if cancelled.is_set():
+        raise OcrFailure("cancelled")
+    with tempfile.TemporaryDirectory(prefix="LumaShot-ocr-") as folder:
+        path = Path(folder) / "selection.png"
+        if not image.save(str(path), "PNG"):
+            raise OcrFailure("image")
+        environment = os.environ.copy()
+        environment["LUMASHOT_OCR_IMAGE"] = str(path)
+        environment["LUMASHOT_OCR_LANGUAGE"] = language
+        command = [str(executable), "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand",
+                   base64.b64encode(OCR_SCRIPT.encode("utf-16-le")).decode("ascii")]
+        process = subprocess.Popen(command, env=environment, stdin=subprocess.DEVNULL,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   creationflags=subprocess.CREATE_NO_WINDOW)
+        deadline = time.monotonic() + timeout
+        try:
+            while True:
+                if cancelled.is_set():
+                    raise OcrFailure("cancelled")
+                if time.monotonic() >= deadline:
+                    raise OcrFailure("timeout")
+                try:
+                    stdout, stderr = process.communicate(timeout=.1)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate()
+        if process.returncode:
+            raise OcrFailure("backend")
+        try:
+            result = json.loads(base64.b64decode(stdout.strip(), validate=True).decode("utf-8-sig"))
+            if not isinstance(result, dict) or not isinstance(result.get("languages"), list):
+                raise ValueError("Invalid OCR response")
+        except (ValueError, UnicodeError):
+            raise OcrFailure("backend") from None
+        return result
+
+
+OCR_COPY = {
+    "ro": {
+        "ocr": "Extrage textul", "tip_ocr": "Recunoaște textul din zona selectată. Poți verifica și copia rezultatul fără să închizi captura.",
+        "ocr_title": "Text din captură", "ocr_note": "Selectează sau corectează textul înainte de copiere. Recunoașterea se face local, pe calculator.",
+        "ocr_busy": "Se recunoaște textul…", "ocr_language": "Limba textului", "ocr_auto": "Automat (Windows)",
+        "ocr_copy": "Copiază textul", "ocr_copy_tip": "Copiază textul selectat sau, dacă nu ai selectat nimic, tot textul.",
+        "ocr_close": "Înapoi la captură", "ocr_copied": "Text copiat.", "ocr_empty": "Nu am găsit text. Încearcă o zonă mai clară sau altă limbă.",
+        "ocr_ready": "Text recunoscut · {recognized_language}", "ocr_retry": "Încearcă din nou", "ocr_result": "Text recunoscut, editabil",
+        "ocr_no_languages": "Nu este instalată nicio limbă pentru recunoașterea textului în Windows. Adaugă un pachet OCR din setările de limbă, apoi încearcă din nou.",
+        "ocr_timeout": "Recunoașterea a durat prea mult. Încearcă o zonă mai mică.", "ocr_unavailable": "Recunoașterea locală Windows nu este disponibilă pe acest calculator.",
+        "ocr_backend": "Windows nu a putut recunoaște textul. Verifică pachetele OCR instalate sau încearcă din nou.",
+        "ocr_image": "Imaginea selectată nu a putut fi pregătită pentru recunoaștere.", "ocr_windows": "Limbi Windows…",
+    },
+    "ru": {
+        "ocr": "Извлечь текст", "tip_ocr": "Распознать текст выбранной области. Проверьте и скопируйте результат, не закрывая снимок.",
+        "ocr_title": "Текст со снимка", "ocr_note": "Выделите или исправьте текст перед копированием. Распознавание выполняется локально на компьютере.",
+        "ocr_busy": "Распознавание текста…", "ocr_language": "Язык текста", "ocr_auto": "Автоматически (Windows)",
+        "ocr_copy": "Копировать текст", "ocr_copy_tip": "Копировать выделенный текст или весь текст, если ничего не выделено.",
+        "ocr_close": "Назад к снимку", "ocr_copied": "Текст скопирован.", "ocr_empty": "Текст не найден. Выберите более чёткую область или другой язык.",
+        "ocr_ready": "Текст распознан · {recognized_language}", "ocr_retry": "Повторить", "ocr_result": "Распознанный текст, доступный для правки",
+        "ocr_no_languages": "В Windows не установлен ни один язык OCR. Добавьте пакет распознавания в настройках языков и повторите попытку.",
+        "ocr_timeout": "Распознавание заняло слишком много времени. Выберите область поменьше.", "ocr_unavailable": "Локальное распознавание Windows недоступно на этом компьютере.",
+        "ocr_backend": "Windows не удалось распознать текст. Проверьте установленные пакеты OCR или повторите попытку.",
+        "ocr_image": "Не удалось подготовить выбранное изображение для распознавания.", "ocr_windows": "Языки Windows…",
+    },
+    "en": {
+        "ocr": "Extract text", "tip_ocr": "Recognize text in the selected area. Review and copy it without closing the capture.",
+        "ocr_title": "Text from screenshot", "ocr_note": "Select or correct the text before copying. Recognition runs locally on your computer.",
+        "ocr_busy": "Recognizing text…", "ocr_language": "Text language", "ocr_auto": "Automatic (Windows)",
+        "ocr_copy": "Copy text", "ocr_copy_tip": "Copy the selected text, or all text when nothing is selected.",
+        "ocr_close": "Back to capture", "ocr_copied": "Text copied.", "ocr_empty": "No text found. Try a clearer area or another language.",
+        "ocr_ready": "Text recognized · {recognized_language}", "ocr_retry": "Try again", "ocr_result": "Recognized text, editable",
+        "ocr_no_languages": "No Windows OCR languages are installed. Add an OCR language pack in Windows language settings, then try again.",
+        "ocr_timeout": "Recognition took too long. Try a smaller area.", "ocr_unavailable": "Local Windows text recognition is unavailable on this computer.",
+        "ocr_backend": "Windows could not recognize the text. Check the installed OCR language packs or try again.",
+        "ocr_image": "The selected image could not be prepared for recognition.", "ocr_windows": "Windows languages…",
+    },
+}
+for _language, _copy in OCR_COPY.items():
+    STRINGS[_language].update(_copy)
+
+
+class OcrJob(QObject):
+    done = Signal(object, object)
+
+    def __init__(self, image, language, backend=recognize_text):
+        super().__init__()  # Independent lifetime: a closing capture must not delete a running job.
+        self.image, self.language, self.backend = image.copy(), language, backend
+        self.cancelled = threading.Event()
+
+    def start(self):
+        threading.Thread(target=self.run, daemon=True, name="LumaShot-OCR").start()
+
+    def run(self):
+        try:
+            result = self.backend(self.image, self.language, self.cancelled)
+        except OcrFailure as error:
+            result = {"ok": False, "code": error.code}
+        except Exception:
+            result = {"ok": False, "code": "backend"}
+        if not self.cancelled.is_set():
+            self.done.emit(self, result)
+
+    def cancel(self):
+        self.cancelled.set()
+
+
+class OcrDialog(QDialog):
+    def __init__(self, image, language, theme="light", parent=None, backend=recognize_text):
+        super().__init__(parent)
+        self.image, self.lang, self.backend = image.copy(), language, backend
+        self.job = None
+        self.setWindowTitle(self.t("ocr_title"))
+        self.setWindowIcon(app_icon())
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.resize(680, 460)
+        self.setMinimumSize(460, 320)
+        colors = theme_colors(theme)
+        self.setStyleSheet(theme_style(theme) + f"""
+QDialog {{ background: {colors['bg']}; }}
+QPlainTextEdit {{ background: {colors['input']}; color: {colors['fg']}; border: 1px solid {colors['border']}; border-radius: 6px; padding: 10px; font-size: 15px; }}
+QProgressBar {{ border: none; background: {colors['border']}; min-height: 3px; max-height: 3px; }}
+QProgressBar::chunk {{ background: {colors['accent']}; }}
+""")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+        note = QLabel(self.t("ocr_note"))
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        row = QHBoxLayout()
+        row.addWidget(QLabel(self.t("ocr_language")))
+        self.languages = ChoiceBox()
+        self.languages.setAccessibleName(self.t("ocr_language"))
+        self.languages.addItem(self.t("ocr_auto"), "")
+        self.languages.currentIndexChanged.connect(self.start_recognition)
+        row.addWidget(self.languages, 1)
+        self.retry = QPushButton(self.t("ocr_retry"))
+        self.retry.clicked.connect(self.start_recognition)
+        row.addWidget(self.retry)
+        layout.addLayout(row)
+        self.editor = QPlainTextEdit()
+        self.editor.setAccessibleName(self.t("ocr_result"))
+        self.editor.textChanged.connect(self.refresh_copy)
+        layout.addWidget(self.editor, 1)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 0)
+        self.progress.setTextVisible(False)
+        layout.addWidget(self.progress)
+        self.status = QLabel()
+        self.status.setObjectName("muted")
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        footer = QHBoxLayout()
+        self.windows_languages = QPushButton(self.t("ocr_windows"))
+        self.windows_languages.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("ms-settings:regionlanguage")))
+        self.windows_languages.hide()
+        footer.addWidget(self.windows_languages)
+        footer.addStretch()
+        close = QPushButton(self.t("ocr_close"))
+        close.clicked.connect(self.reject)
+        self.copy = QPushButton(self.t("ocr_copy"))
+        self.copy.setObjectName("primary")
+        self.copy.setIcon(ui_icon("copy", "#ffffff"))
+        self.copy.setToolTip(wrapped_tip(self.t("ocr_copy_tip")))
+        self.copy.clicked.connect(self.copy_text)
+        for button in (close, self.copy, self.retry, self.windows_languages):
+            button.setAutoDefault(False)
+            button.setDefault(False)
+        footer.addWidget(close)
+        footer.addWidget(self.copy)
+        layout.addLayout(footer)
+        self.copy.setEnabled(False)
+        QTimer.singleShot(0, self.start_recognition)
+
+    def t(self, key, **values):
+        return tr(self.lang, key, **values)
+
+    def start_recognition(self, *args):
+        if self.job:
+            self.job.cancel()
+        self.editor.clear()
+        self.editor.setEnabled(False)
+        self.retry.setEnabled(False)
+        self.progress.show()
+        self.windows_languages.hide()
+        self.status.setText(self.t("ocr_busy"))
+        self.job = OcrJob(self.image, self.languages.currentData() or "", self.backend)
+        self.job.done.connect(self.recognized)
+        self.job.start()
+
+    def recognized(self, job, result):
+        if job is not self.job:
+            return
+        self.job = None
+        self.progress.hide()
+        self.retry.setEnabled(True)
+        self.editor.setEnabled(True)
+        if "languages" in result:
+            selected = self.languages.currentData()
+            self.languages.blockSignals(True)
+            self.languages.clear()
+            self.languages.addItem(self.t("ocr_auto"), "")
+            for language in result["languages"]:
+                self.languages.addItem(language["name"], language["tag"])
+            index = self.languages.findData(selected)
+            self.languages.setCurrentIndex(max(0, index))
+            self.languages.blockSignals(False)
+        if not result.get("ok"):
+            code = result.get("code", "backend")
+            key = "ocr_" + code
+            self.status.setText(self.t(key if key in OCR_COPY[self.lang] else "ocr_backend"))
+            self.windows_languages.setVisible(code in ("no_languages", "backend"))
+        else:
+            text = result.get("text", "")
+            self.editor.setPlainText(text)
+            self.status.setText(self.t("ocr_ready", recognized_language=result.get("language", "")) if text.strip() else self.t("ocr_empty"))
+        self.refresh_copy()
+
+    def refresh_copy(self):
+        self.copy.setEnabled(self.editor.isEnabled() and bool(self.editor.toPlainText().strip()))
+
+    def copy_text(self):
+        if not self.copy.isEnabled():
+            return
+        selected = self.editor.textCursor().selectedText()
+        text = selected.replace("\u2029", "\n") if selected else self.editor.toPlainText()
+        if text.strip():
+            QApplication.clipboard().setText(text)
+            self.status.setText(self.t("ocr_copied"))
+
+    def reject(self):
+        if self.job:
+            self.job.cancel()
+        super().reject()
+
+    def closeEvent(self, event):
+        if self.job:
+            self.job.cancel()
+        super().closeEvent(event)
+
+
+# GitHub is contacted only after a manual check or an explicit startup opt-in.
+import hashlib
+import re
+import urllib.error
+import urllib.request
+import urllib.parse
+from zipfile import ZipFile, BadZipFile
+
+APP_VERSION = "5.0.0"
+UPDATE_REPOSITORY = "TOKKAB1/LumaShot"
+UPDATE_PAGE = "https://github.com/" + UPDATE_REPOSITORY + "/releases/latest"
+UPDATE_API = "https://api.github.com/repos/" + UPDATE_REPOSITORY + "/releases/latest"
+MAX_UPDATE_SIZE = 512 * 1024 * 1024
+
+
+class UpdateFailure(Exception):
+    def __init__(self, code):
+        super().__init__(code)
+        self.code = code
+
+
+def version_tuple(value):
+    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", str(value))
+    return tuple(map(int, match.groups())) if match else None
+
+
+def release_installer(release):
+    """Use an installer's exact version; a legacy tag such as v4 means no 4.0 upgrade."""
+    if not isinstance(release, dict) or release.get("draft") or release.get("prerelease"):
+        return None
+    candidates = []
+    for asset in release.get("assets", []):
+        match = re.fullmatch(r"LumaShot-Setup-(\d+\.\d+\.\d+)-Windows-x64\.(exe|zip)", asset.get("name", ""))
+        url = asset.get("browser_download_url", "")
+        if not match or not url.startswith("https://github.com/" + UPDATE_REPOSITORY + "/releases/download/"):
+            continue
+        version, extension = match.groups()
+        tag = version_tuple(release.get("tag_name"))
+        if tag and tag != version_tuple(version):
+            continue
+        size = asset.get("size", 0)
+        if not isinstance(size, int) or not 0 < size <= MAX_UPDATE_SIZE:
+            continue
+        candidates.append({"version": version, "extension": extension, "asset": asset,
+                           "notes": str(release.get("body") or "")[:50000],
+                           "page": "https://github.com/" + UPDATE_REPOSITORY + "/releases/tag/" +
+                                   urllib.parse.quote(str(release.get("tag_name", "")), safe="")})
+    return max(candidates, key=lambda item: (version_tuple(item["version"]), item["extension"] == "exe")) if candidates else None
+
+
+def check_release(cancelled):
+    request = urllib.request.Request(UPDATE_API, headers={"Accept": "application/vnd.github+json",
+        "User-Agent": "LumaShot/" + APP_VERSION, "X-GitHub-Api-Version": "2022-11-28"})
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            data = response.read(2*1024*1024+1)
+        if len(data) > 2*1024*1024:
+            raise UpdateFailure("invalid")
+        release = release_installer(json.loads(data))
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return {"state": "current"}
+        raise UpdateFailure("network") from None
+    except (OSError, ValueError):
+        raise UpdateFailure("network") from None
+    if cancelled.is_set():
+        raise UpdateFailure("cancelled")
+    if release is None:
+        raise UpdateFailure("invalid")
+    return {"state": "available" if version_tuple(release["version"]) > version_tuple(APP_VERSION) else "current", "release": release}
+
+
+def download_installer(release, cancelled, progress, opener=urllib.request.urlopen):
+    asset = release["asset"]
+    url = asset["browser_download_url"]
+    if not url.startswith("https://github.com/" + UPDATE_REPOSITORY + "/releases/download/"):
+        raise UpdateFailure("invalid")
+    digest = str(asset.get("digest") or "")
+    if not re.fullmatch(r"sha256:[a-fA-F0-9]{64}", digest):
+        raise UpdateFailure("checksum_missing")
+    expected_size = asset["size"]
+    if not isinstance(expected_size, int) or not 0 < expected_size <= MAX_UPDATE_SIZE:
+        raise UpdateFailure("invalid")
+    directory = tempfile.TemporaryDirectory(prefix="LumaShot-update-")
+    try:
+        downloaded = Path(directory.name) / "download.bin"
+        checksum, received = hashlib.sha256(), 0
+        request = urllib.request.Request(url, headers={"User-Agent": "LumaShot/" + APP_VERSION})
+        with opener(request, timeout=15) as response, downloaded.open("wb") as target:
+            final = urllib.parse.urlparse(response.geturl())
+            if final.scheme != "https" or final.hostname not in ("github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"):
+                raise UpdateFailure("invalid")
+            while True:
+                if cancelled.is_set():
+                    raise UpdateFailure("cancelled")
+                block = response.read(128*1024)
+                if not block:
+                    break
+                received += len(block)
+                if received > expected_size or received > MAX_UPDATE_SIZE:
+                    raise UpdateFailure("invalid")
+                checksum.update(block)
+                target.write(block)
+                progress(min(100, received*100//expected_size))
+        if cancelled.is_set():
+            raise UpdateFailure("cancelled")
+        if received != expected_size or checksum.hexdigest().lower() != digest[7:].lower():
+            raise UpdateFailure("checksum")
+        installer = Path(directory.name) / ("LumaShot-Setup-" + release["version"] + "-Windows-x64.exe")
+        if release["extension"] == "zip":
+            with ZipFile(downloaded) as archive:
+                matches = [entry for entry in archive.infolist() if not entry.is_dir() and Path(entry.filename).name == installer.name]
+                if len(matches) != 1 or matches[0].file_size > MAX_UPDATE_SIZE or matches[0].flag_bits & 1:
+                    raise UpdateFailure("invalid")
+                # Copy one known entry to a fixed filename; never extract archive paths.
+                with archive.open(matches[0]) as source, installer.open("wb") as target:
+                    written = 0
+                    while block := source.read(128*1024):
+                        if cancelled.is_set():
+                            raise UpdateFailure("cancelled")
+                        written += len(block)
+                        if written > MAX_UPDATE_SIZE:
+                            raise UpdateFailure("invalid")
+                        target.write(block)
+        else:
+            downloaded.replace(installer)
+        with installer.open("rb") as source:
+            if source.read(2) != b"MZ":
+                raise UpdateFailure("invalid")
+        return {"state": "downloaded", "directory": directory, "installer": installer}
+    except Exception:
+        directory.cleanup()
+        raise
+
+
+UPDATE_HANDOFF_SCRIPT = r'''
+$ErrorActionPreference = 'Stop'
+$installer = $env:LUMASHOT_UPDATE_INSTALLER
+$folder = [IO.Path]::GetDirectoryName($installer)
+Wait-Process -Id ([int]$env:LUMASHOT_UPDATE_PID) -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 400
+try {
+    $setup = Start-Process -FilePath $installer -PassThru
+    $setup.WaitForExit()
+} finally {
+    # Delete only files created by this download, then the empty temporary folder.
+    Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $folder 'download.bin') -Force -ErrorAction SilentlyContinue
+    try { [IO.Directory]::Delete($folder) } catch {}
+}
+'''
+
+
+def launch_update(installer):
+    """Start the interactive installer after this app exits; never run it silently."""
+    installer = Path(installer).resolve()
+    folder = installer.parent
+    if folder.parent != Path(tempfile.gettempdir()).resolve() or not folder.name.startswith("LumaShot-update-") or not installer.is_file():
+        raise UpdateFailure("install")
+    powershell = Path(os.environ.get("SystemRoot", "C:/Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    environment = os.environ.copy()
+    environment.update(LUMASHOT_UPDATE_INSTALLER=str(installer), LUMASHOT_UPDATE_PID=str(os.getpid()))
+    encoded = base64.b64encode(UPDATE_HANDOFF_SCRIPT.encode("utf-16-le")).decode("ascii")
+    return subprocess.Popen([str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+                            env=environment, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            creationflags=subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP)
+
+
+UPDATE_COPY = {
+    "ro": {
+        "updates": "Actualizări", "update_check": "Verifică actualizările", "update_auto": "Verifică actualizările la pornire",
+        "tip_update_auto": "Contactează GitHub la pornire pentru a verifica versiunile noi. Nu descarcă și nu instalează automat.",
+        "update_note": "Actualizările se verifică pe GitHub. Capturile și textul recunoscut nu sunt trimise. Descărcarea și instalarea pornesc numai când le alegi.",
+        "update_version": "Versiunea instalată: {version}", "update_checking": "Se verifică versiunile de pe GitHub…",
+        "update_current": "Nu există o versiune stabilă mai nouă decât {version}.", "update_available": "Este disponibilă versiunea {version}.",
+        "update_download": "Descarcă actualizarea", "update_downloading": "Se descarcă… {percent}%", "update_install": "Instalează și închide LumaShot",
+        "update_ready": "Installerul este descărcat și verificat. Instalarea va închide LumaShot; urmează pașii din installer.",
+        "update_open": "Deschide pe GitHub", "update_close": "Închide", "update_retry": "Reîncearcă", "update_notes": "Modificările versiunii",
+        "update_network": "Nu am putut verifica sau descărca actualizarea. Verifică internetul și încearcă din nou.",
+        "update_invalid": "Versiunea publicată nu are un installer Windows x64 compatibil. Poți deschide pagina de pe GitHub.",
+        "update_checksum": "Fișierul descărcat nu corespunde verificării de integritate. Nu va fi pornit; încearcă din nou.",
+        "update_checksum_missing": "GitHub nu furnizează suma de control pentru acest fișier. Folosește pagina versiunii pentru descărcare.",
+        "update_install_error": "Installerul nu a putut fi pornit. Poți descărca actualizarea de pe pagina GitHub.",
+        "update_busy": "Încheie captura sau filmarea și salvează ori renunță la ciornă înainte de instalare.",
+    },
+    "ru": {
+        "updates": "Обновления", "update_check": "Проверить обновления", "update_auto": "Проверять обновления при запуске",
+        "tip_update_auto": "Проверять новые версии на GitHub при запуске. Не скачивает и не устанавливает автоматически.",
+        "update_note": "Версии проверяются на GitHub. Снимки и распознанный текст не отправляются. Скачивание и установка начинаются только по вашему выбору.",
+        "update_version": "Установлена версия: {version}", "update_checking": "Проверка версий на GitHub…",
+        "update_current": "Нет стабильной версии новее {version}.", "update_available": "Доступна версия {version}.",
+        "update_download": "Скачать обновление", "update_downloading": "Скачивание… {percent}%", "update_install": "Установить и закрыть LumaShot",
+        "update_ready": "Установщик скачан и проверен. LumaShot закроется; следуйте шагам установщика.",
+        "update_open": "Открыть на GitHub", "update_close": "Закрыть", "update_retry": "Повторить", "update_notes": "Изменения версии",
+        "update_network": "Не удалось проверить или скачать обновление. Проверьте интернет и повторите попытку.",
+        "update_invalid": "У версии нет совместимого установщика Windows x64. Можно открыть страницу на GitHub.",
+        "update_checksum": "Скачанный файл не прошёл проверку целостности и не будет запущен. Повторите попытку.",
+        "update_checksum_missing": "GitHub не предоставляет контрольную сумму файла. Используйте страницу версии для скачивания.",
+        "update_install_error": "Не удалось запустить установщик. Скачайте обновление со страницы GitHub.",
+        "update_busy": "Завершите снимок или запись и сохраните либо удалите черновик перед установкой.",
+    },
+    "en": {
+        "updates": "Updates", "update_check": "Check for updates", "update_auto": "Check for updates at startup",
+        "tip_update_auto": "Contact GitHub at startup to check for newer versions. Does not download or install automatically.",
+        "update_note": "Versions are checked on GitHub. Screenshots and recognized text are not sent. Downloads and installation start only when you choose them.",
+        "update_version": "Installed version: {version}", "update_checking": "Checking GitHub for releases…",
+        "update_current": "There is no stable release newer than {version}.", "update_available": "Version {version} is available.",
+        "update_download": "Download update", "update_downloading": "Downloading… {percent}%", "update_install": "Install and close LumaShot",
+        "update_ready": "The installer is downloaded and verified. LumaShot will close; follow the installer steps.",
+        "update_open": "Open on GitHub", "update_close": "Close", "update_retry": "Try again", "update_notes": "Release changes",
+        "update_network": "Could not check or download the update. Check your internet connection and try again.",
+        "update_invalid": "This release has no compatible Windows x64 installer. You can open its GitHub page.",
+        "update_checksum": "The downloaded file failed its integrity check and will not be launched. Try again.",
+        "update_checksum_missing": "GitHub does not provide a checksum for this file. Use the release page to download it.",
+        "update_install_error": "Could not start the installer. Download the update from GitHub instead.",
+        "update_busy": "Finish the capture or recording and save or discard the draft before installing.",
+    },
+}
+for _language, _copy in UPDATE_COPY.items():
+    STRINGS[_language].update(_copy)
+
+
+class UpdateJob(QObject):
+    done = Signal(object, object)
+    progress = Signal(object, int)
+
+    def __init__(self, release=None):
+        super().__init__()
+        self.release = release
+        self.cancelled = threading.Event()
+
+    def start(self):
+        threading.Thread(target=self.run, daemon=True, name="LumaShot-Update").start()
+
+    def run(self):
+        try:
+            result = download_installer(self.release, self.cancelled,
+                lambda percent: self.progress.emit(self, percent)) if self.release else check_release(self.cancelled)
+        except UpdateFailure as error:
+            result = {"state": "error", "code": error.code}
+        except Exception:
+            result = {"state": "error", "code": "network"}
+        if not self.cancelled.is_set():
+            self.done.emit(self, result)
+        elif result.get("directory"):
+            result["directory"].cleanup()
+
+    def cancel(self):
+        self.cancelled.set()
+
+
+class UpdateDialog(QDialog):
+    def __init__(self, owner, initial_release=None):
+        super().__init__(owner)
+        self.owner, self.lang = owner, owner.lang
+        self.initial_release = initial_release
+        self.job = self.release = self.directory = self.installer = None
+        self.setWindowTitle("LumaShot — " + self.t("updates"))
+        self.setWindowIcon(app_icon())
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.resize(640, 410)
+        self.setMinimumSize(480, 320)
+        colors = theme_colors(owner.theme)
+        self.setStyleSheet(theme_style(owner.theme) + f"QDialog {{ background: {colors['bg']}; }} QPlainTextEdit {{ background: {colors['input']}; color: {colors['fg']}; padding: 8px; border: 1px solid {colors['border']}; border-radius: 6px; }}")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+        layout.addWidget(QLabel(self.t("update_version", version=APP_VERSION)))
+        self.status = QLabel(self.t("update_checking"))
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        self.notes = QPlainTextEdit()
+        self.notes.setReadOnly(True)
+        self.notes.setAccessibleName(self.t("update_notes"))
+        layout.addWidget(self.notes, 1)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 0)
+        layout.addWidget(self.progress)
+        buttons = QHBoxLayout()
+        self.page = QPushButton(self.t("update_open"))
+        self.page.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(self.release["page"] if self.release else UPDATE_PAGE)))
+        buttons.addWidget(self.page)
+        buttons.addStretch()
+        self.close_button = QPushButton(self.t("update_close"))
+        self.close_button.clicked.connect(self.reject)
+        buttons.addWidget(self.close_button)
+        self.action = QPushButton(self.t("update_check"))
+        self.action.setObjectName("primary")
+        self.action.setEnabled(False)
+        self.action.clicked.connect(self.activate_action)
+        buttons.addWidget(self.action)
+        for button in (self.page, self.close_button, self.action):
+            button.setAutoDefault(False)
+            button.setDefault(False)
+        layout.addLayout(buttons)
+        QTimer.singleShot(0, self.initialize_check)
+
+    def t(self, key, **values):
+        return tr(self.lang, key, **values)
+
+    def initialize_check(self):
+        if self.initial_release:
+            self.completed(None, {"state": "available", "release": self.initial_release})
+        else:
+            self.check()
+
+    def check(self):
+        self.status.setText(self.t("update_checking"))
+        self.begin_job(UpdateJob())
+
+    def begin_job(self, job):
+        if self.job:
+            self.job.cancel()
+        self.job = job
+        self.action.setEnabled(False)
+        self.progress.setRange(0, 0)
+        self.progress.show()
+        job.done.connect(self.completed)
+        job.progress.connect(self.download_progress)
+        job.start()
+
+    def completed(self, job, result):
+        if job is not self.job:
+            if result.get("directory"):
+                result["directory"].cleanup()
+            return
+        self.job = None
+        self.progress.hide()
+        if result["state"] == "available":
+            self.release = result["release"]
+            self.notes.setPlainText(self.release["notes"])
+            self.status.setText(self.t("update_available", version=self.release["version"]))
+            self.action.setText(self.t("update_download"))
+        elif result["state"] == "downloaded":
+            self.directory, self.installer = result["directory"], result["installer"]
+            self.status.setText(self.t("update_ready"))
+            self.action.setText(self.t("update_install"))
+        elif result["state"] == "current":
+            self.status.setText(self.t("update_current", version=APP_VERSION))
+            self.action.setText(self.t("update_check"))
+        else:
+            code = result.get("code", "network")
+            key = "update_" + code
+            self.status.setText(self.t(key if key in UPDATE_COPY[self.lang] else "update_network"))
+            self.action.setText(self.t("update_download") if self.release else self.t("update_retry"))
+        self.action.setEnabled(True)
+
+    def download_progress(self, job, percent):
+        if job is self.job:
+            self.progress.setRange(0, 100)
+            self.progress.setValue(percent)
+            self.status.setText(self.t("update_downloading", percent=percent))
+
+    def activate_action(self):
+        if self.installer:
+            self.install()
+        elif self.release:
+            self.begin_job(UpdateJob(self.release))
+        else:
+            self.check()
+
+    def install(self):
+        if self.owner.recording or self.owner.overlays or self.owner.review_dialog or self.owner.capture_pending:
+            self.status.setText(self.t("update_busy"))
+            return
+        try:
+            launch_update(self.installer)
+        except (OSError, UpdateFailure):
+            self.status.setText(self.t("update_install_error"))
+            return
+        # The detached helper owns these files until the installer closes.
+        self.directory._finalizer.detach()
+        self.directory = None
+        self.owner.quit_app()
+
+    def reject(self):
+        if self.job:
+            self.job.cancel()
+        if self.directory:
+            self.directory.cleanup()
+            self.directory = None
+        super().reject()
+
+    def closeEvent(self, event):
+        self.reject()
+        event.accept()
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -2783,6 +3530,9 @@ class MainWindow(QMainWindow):
         self.record_controls = None
         self.recording_draft = None
         self.review_dialog = None
+        self.update_dialog = None
+        self.update_job = None
+        self.pending_update = None
         self.startup = WindowsStartup()
         self.quit_after_recording = False
         self.setWindowTitle("LumaShot")
@@ -2813,6 +3563,8 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, lambda: self.settings.on_error(self.settings.error))
         if QSystemTrayIcon.isSystemTrayAvailable():
             self.tray.show()
+        if self.option("check_updates", False):
+            QTimer.singleShot(2500, lambda: self.check_updates(quiet=True))
 
     def t(self, message_key, **values):
         return tr(self.lang, message_key, **values)
@@ -3023,11 +3775,76 @@ class MainWindow(QMainWindow):
         video_form.addStretch()
         self.tabs.addTab(video, self.t("record"))
         self.tabs.setTabToolTip(3, wrapped_tip(self.t("record_tip")))
+        updates = QWidget()
+        update_layout = QVBoxLayout(updates)
+        update_layout.setContentsMargins(20, 18, 20, 18)
+        update_layout.setSpacing(14)
+        update_layout.addWidget(QLabel(self.t("update_version", version=APP_VERSION)))
+        update_layout.addWidget(self.label("update_note", "muted", True))
+        automatic = ContrastCheckBox(self.t("update_auto"))
+        automatic.setToolTip(wrapped_tip(self.t("tip_update_auto")))
+        automatic.setChecked(self.option("check_updates", False))
+        automatic.toggled.connect(lambda checked: self.settings.setValue("check_updates", checked))
+        update_layout.addWidget(automatic)
+        check_updates = QPushButton(self.t("update_check"))
+        check_updates.setIcon(ui_icon("resume", self.icon_color))
+        check_updates.clicked.connect(lambda: self.check_updates())
+        update_layout.addWidget(check_updates, 0, Qt.AlignmentFlag.AlignLeft)
+        update_layout.addStretch()
+        self.tabs.addTab(updates, self.t("updates"))
+        self.tabs.setTabToolTip(4, wrapped_tip(self.t("update_note")))
         self.tabs.setCurrentIndex(previous_tab)
         layout.addWidget(self.tabs, 1)
         layout.addWidget(self.label("settings_saved", "muted", True))
         self.setCentralWidget(root)
         self.refresh_shortcuts()
+
+    def check_updates(self, quiet=False):
+        if self.quitting:
+            return
+        if self.update_dialog is not None:
+            if not quiet:
+                self.update_dialog.raise_()
+                self.update_dialog.activateWindow()
+            return
+        if quiet:
+            if self.update_job:
+                return
+            self.update_job = UpdateJob()
+            self.update_job.done.connect(self.background_update_finished)
+            self.update_job.start()
+            return
+        if self.update_job:
+            self.update_job.cancel()
+            self.update_job = None
+        self.update_dialog = UpdateDialog(self)
+        self.update_dialog.finished.connect(self.update_finished)
+        self.update_dialog.open()
+
+    def background_update_finished(self, job, result):
+        if job is not self.update_job:
+            return
+        self.update_job = None
+        if result.get("state") == "available" and not self.quitting:
+            self.pending_update = result["release"]
+            QTimer.singleShot(0, self.present_pending_update)
+
+    def present_pending_update(self):
+        if not self.pending_update or self.quitting:
+            return
+        if self.update_dialog:
+            self.pending_update = None
+            return
+        if self.recording or self.overlays or self.review_dialog or self.capture_pending:
+            QTimer.singleShot(1000, self.present_pending_update)
+            return
+        self.update_dialog = UpdateDialog(self, initial_release=self.pending_update)
+        self.pending_update = None
+        self.update_dialog.finished.connect(self.update_finished)
+        self.update_dialog.open()
+
+    def update_finished(self, result):
+        self.update_dialog = None
 
     @property
     def icon_color(self):
@@ -3632,6 +4449,30 @@ def check_installation(report_path):
             player.setSource(QUrl())
             if not frames or frames[0].size() != QSize(322, 242):
                 raise RuntimeError("Bundled video decoder failed: " + player.errorString())
+            from PySide6.QtGui import QFontDatabase
+            QFontDatabase.addApplicationFont(str(Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts/segoeui.ttf"))
+            ocr_image = QImage(800, 160, QImage.Format.Format_RGB32)
+            ocr_image.fill(QColor("white"))
+            ocr_painter = QPainter(ocr_image)
+            ocr_painter.setPen(QColor("black"))
+            ocr_painter.setFont(QFont("Segoe UI", 28))
+            ocr_painter.drawText(25, 85, "LumaShot OCR test 123")
+            ocr_painter.end()
+            ocr_result = recognize_text(ocr_image)
+            if ocr_result.get("ok"):
+                if any(v["tag"].startswith("en") for v in ocr_result["languages"]):
+                    ocr_result = recognize_text(ocr_image, "en-US")
+                    if ocr_result.get("text") != "LumaShot OCR test 123":
+                        raise RuntimeError("Bundled OCR did not recognize generated text")
+                result["ocr"] = True
+            elif ocr_result.get("code") == "no_languages":
+                result["ocr"] = "No installed Windows OCR language packs"
+            else:
+                raise RuntimeError("Bundled OCR backend failed")
+            if release_installer({"tag_name": "v4", "assets": [{"name":"LumaShot-Setup-0.4.0-Windows-x64.zip", "size":100,
+                "browser_download_url":"https://github.com/TOKKAB1/LumaShot/releases/download/v4/LumaShot-Setup-0.4.0-Windows-x64.zip"}]})["version"] != "0.4.0":
+                raise RuntimeError("Update version parsing failed")
+            result["update_version_parser"] = True
             draft = VideoDraft()
             try:
                 shutil.copyfile(path, draft.path)
