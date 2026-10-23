@@ -15,6 +15,9 @@
   <strong>English</strong> · <a href="docs/README.ro.md">Română</a> · <a href="docs/README.ru.md">Русский</a>
 </p>
 <p align="center">
+  <a href="https://github.com/TOKKAB1/LumaShot/releases/latest"><img alt="Download for Windows" src="https://img.shields.io/badge/Download_for_Windows-Installer-118769?style=for-the-badge"></a>
+</p>
+<p align="center">
   <a href="https://github.com/TOKKAB1/LumaShot/archive/refs/heads/main.zip">Download source ZIP</a> ·
   <a href="#run-from-python">Run from Python</a> ·
   <a href="https://github.com/TOKKAB1/LumaShot/issues">Report an issue</a>
@@ -33,6 +36,10 @@
 | Copy, or save as PNG/JPEG | Save to the default folder or choose a location | Portable JSON preferences |
 
 Captures stay local. LumaShot has **no account, cloud upload or telemetry**.
+
+## Install on Windows
+
+Download the installer ZIP from [the latest release](https://github.com/TOKKAB1/LumaShot/releases/latest), extract it and run **LumaShot-Setup-…-Windows-x64.exe**. Python is not required. Setup offers Romanian, Russian and English, installs for the current user and lets you add a desktop shortcut. LumaShot is also available as Python source below.
 
 ## Run from Python
 
