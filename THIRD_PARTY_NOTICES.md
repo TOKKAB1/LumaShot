@@ -100,3 +100,29 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ```
+
+## Portable Windows distribution
+
+The Windows ZIP bundles Python, PySide6/Qt, Qt Multimedia's FFmpeg libraries,
+SoundCard, NumPy, CFFI and pycparser. They retain their own licenses.
+The `licenses/` directory includes license texts and the upstream Qt licensing
+and FFmpeg attribution pages. Package-provided notices are also copied there
+by the build script. Exact installed versions are recorded in `BUILD-INFO.json`.
+
+Qt for Python is available under the LGPLv3/GPLv3 or a commercial license;
+this project uses the open-source distribution. See
+https://doc.qt.io/qtforpython-6/licenses.html . Qt and FFmpeg remain dynamically
+linked in `_internal`. You may replace them with compatible modified builds;
+LumaShot does not prohibit reverse engineering for debugging those changes.
+LumaShot source and build scripts are included with the portable application.
+
+Upstream sources and build information:
+- Qt / PySide6: https://download.qt.io/official_releases/QtForPython/ and https://code.qt.io/cgit/pyside/pyside-setup.git/
+- Qt modules: https://download.qt.io/official_releases/qt/ and https://code.qt.io/cgit/qt/
+- FFmpeg 9.0.1: https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz
+- Qt FFmpeg build scripts: https://code.qt.io/cgit/qt/qtmultimedia.git/tree/config.tests/ffmpeg
+- Python: https://www.python.org/downloads/source/
+- SoundCard: https://github.com/bastibe/SoundCard
+- NumPy: https://github.com/numpy/numpy
+- CFFI: https://github.com/python-cffi/cffi
+- pycparser: https://github.com/eliben/pycparser

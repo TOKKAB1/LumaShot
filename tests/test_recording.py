@@ -285,9 +285,27 @@ class RecordingBarTests(unittest.TestCase):
             self.assertEqual(bar.start_button.text(), self.window.t("bar_stop"))
             self.assertTrue(bar.start_button.isEnabled())
             QTest.qWait(220)
+            self.assertIsNotNone(bar.boundary)
+            self.assertEqual(len(bar.boundary.strips), 4)
+            QTest.mouseClick(bar.pause_button, Qt.MouseButton.LeftButton)
+            self.assertTrue(self.window.recording.paused)
+            self.assertEqual(bar.pause_button.accessibleName(), self.window.t("record_resume"))
+            before_pause = self.window.recording.elapsed()
+            QTest.qWait(150)
+            self.assertEqual(self.window.recording.elapsed(), before_pause)
+            QTest.mouseClick(bar.pause_button, Qt.MouseButton.LeftButton)
+            self.assertFalse(self.window.recording.paused)
+            QTest.qWait(100)
+            boundary = bar.boundary
             QTest.mouseClick(bar.start_button, Qt.MouseButton.LeftButton)
             self.assertTrue(until(lambda: self.window.recording is None))
             self.assertIsNone(self.window.record_controls)
+            self.assertFalse(boundary.strips)
+            self.assertIsNotNone(self.window.review_dialog)
+            self.assertTrue(self.window.recording_draft.path.exists())
+            self.assertFalse(list(Path(self.temp.name).glob("*.mp4")))
+            self.window.review_dialog.save_default()
+            self.assertTrue(until(lambda: self.window.review_dialog is None))
             self.assertEqual(len(list(Path(self.temp.name).glob("*.mp4"))), 1)
             warning.assert_not_called()
 
@@ -323,6 +341,10 @@ class RecordingBarTests(unittest.TestCase):
                 APP.processEvents()
                 self.assertLessEqual(bar.height(), 50)
                 self.assertFalse(bar.start_button.icon().isNull())
+                self.assertFalse(bar.pause_button.icon().isNull())
+                bar.on_paused(True)
+                self.assertEqual(bar.pause_button.accessibleName(), self.window.t("record_resume"))
+                self.assertIn(self.window.t("record_resume_tip"), bar.pause_button.toolTip())
                 for key, button in bar.checks.items():
                     self.assertIn(self.window.t(key), button.accessibleName())
                     self.assertIn(self.window.t("audio_off"), button.toolTip())
@@ -330,8 +352,119 @@ class RecordingBarTests(unittest.TestCase):
                 bar.dispose()
                 bar.deleteLater()
 
+    def test_boundary_fallback_is_outside_crop_and_does_not_accept_input(self):
+        region = QRect(-800, -50, 640, 360)
+        boundary = app.RecordingBoundary(region)
+        try:
+            with patch("LumaShot.exclude_from_capture", return_value=False):
+                boundary.show()
+                for strip in boundary.strips:
+                    self.assertFalse(region.intersects(strip.geometry()))
+                    self.assertTrue(strip.windowFlags() & Qt.WindowType.WindowTransparentForInput)
+                    self.assertTrue(strip.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus)
+            with patch("LumaShot.exclude_from_capture", return_value=True):
+                boundary.show()
+                for strip in boundary.strips:
+                    self.assertTrue(region.contains(strip.geometry()))
+            before = boundary.strips[0].styleSheet()
+            boundary.set_paused(True)
+            self.assertNotEqual(before, boundary.strips[0].styleSheet())
+        finally:
+            boundary.close()
+
 
 class RecordingTests(unittest.TestCase):
+    def test_pause_excludes_time_and_frames_and_releases_audio(self):
+        with tempfile.TemporaryDirectory() as folder, patch("LumaShot.AudioSource", SyntheticAudio):
+            path = Path(folder)/"pause.mp4"
+            rec = app.VideoRecording(QRect(0, 0, 320, 240), path, grab_factory=SyntheticGrab)
+            rec.set_audio("system_audio", True)
+            results = []
+            rec.finished.connect(lambda path, error: results.append(error))
+            rec.start()
+            self.assertTrue(until(lambda: rec.active))
+            QTest.qWait(450)
+            source = rec.sources["system_audio"]
+            rec.set_paused(True)
+            paused_time, count = rec.elapsed(), rec.grabber.count
+            self.assertTrue(source.closed)
+            QTest.qWait(500)
+            self.assertEqual(rec.elapsed(), paused_time)
+            self.assertEqual(rec.grabber.count, count)
+            rec.set_paused(False)
+            self.assertIsNot(rec.sources["system_audio"], source)
+            QTest.qWait(450)
+            rec.set_paused(True)
+            rec.stop()  # Stopping from pause must still finalize one playable file.
+            self.assertTrue(until(lambda: bool(results)))
+            self.assertEqual(results, [""])
+            player = QMediaPlayer()
+            player.setSource(QUrl.fromLocalFile(str(path)))
+            self.assertTrue(until(lambda: player.duration() > 0))
+            self.assertTrue(750 < player.duration() < 1150, player.duration())
+            player.setSource(QUrl())
+            rec.deleteLater()
+            APP.processEvents()
+
+    def test_stereo_quality_with_bursty_audio_delivery(self):
+        import queue
+        class BurstyStereo:
+            def __init__(self, kind):
+                self.blocks, self.error = queue.Queue(), None
+                self.position = 0
+                self.started_at = time.monotonic()
+                self.timer = QTimer()
+                self.timer.timeout.connect(self.deliver)
+                self.timer.start(80)
+            def deliver(self):
+                # Four 20-ms chunks arrive together, like a shared WASAPI buffer.
+                due = int((time.monotonic()-self.started_at)*50)*960
+                while self.position < due:
+                    t = np.arange(self.position, self.position+960)/48000
+                    left = .2*np.sin(2*np.pi*440*t)+.15*np.sin(2*np.pi*12000*t)
+                    right = .3*np.sin(2*np.pi*1800*t)
+                    self.blocks.put(np.stack([left, right], axis=1).astype(np.float32))
+                    self.position += 960
+            def close(self):
+                self.timer.stop()
+                self.deliver()
+        with tempfile.TemporaryDirectory() as folder, patch("LumaShot.AudioSource", BurstyStereo):
+            path = Path(folder)/"stereo.mp4"
+            rec = app.VideoRecording(QRect(0, 0, 320, 240), path, grab_factory=SyntheticGrab)
+            rec.set_audio("system_audio", True)
+            results = []
+            rec.finished.connect(lambda path, error: results.append(error))
+            rec.start()
+            QTimer.singleShot(1600, rec.stop)
+            self.assertTrue(until(lambda: bool(results)))
+            self.assertEqual(results, [""])
+            decoder = QAudioDecoder()
+            fmt = QAudioFormat()
+            fmt.setSampleRate(48000)
+            fmt.setChannelCount(2)
+            fmt.setSampleFormat(QAudioFormat.SampleFormat.Float)
+            decoder.setAudioFormat(fmt)
+            buffers, done = [], []
+            decoder.bufferReady.connect(lambda: buffers.append(bytes(decoder.read().constData())))
+            decoder.finished.connect(lambda: done.append(True))
+            decoder.setSource(QUrl.fromLocalFile(str(path)))
+            decoder.start()
+            self.assertTrue(until(lambda: bool(done)), decoder.errorString())
+            audio = np.frombuffer(b"".join(buffers), np.float32).reshape(-1, 2)
+            decoder.stop()
+            decoder.setSource(QUrl())
+            rec.deleteLater()
+            APP.processEvents()
+            sample = audio[24000:60000]
+            def tone(channel, frequency):
+                return abs(np.dot(sample[:, channel], np.exp(-2j*np.pi*frequency*np.arange(len(sample))/48000)))/len(sample)
+            self.assertGreater(tone(0, 440), .075)
+            self.assertGreater(tone(0, 12000), .045)  # Music's high frequencies survive AAC.
+            self.assertGreater(tone(1, 1800), .11)
+            self.assertLess(tone(1, 440), .008)  # Stereo channels stay independent.
+            for start in range(24000, 59000, 960):
+                self.assertGreater(float(np.sqrt(np.mean(audio[start:start+960]**2))), .12)
+
     def test_mixer_silence_headroom_and_clipping(self):
         self.assertFalse(any(app.mix_audio([])))
         loud = np.full((960, 2), 2, np.float32)

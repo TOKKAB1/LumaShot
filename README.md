@@ -50,7 +50,7 @@ python -m pip install PySide6==6.12.0 SoundCard==0.4.6
 python LumaShot.py
 ```
 
-The application lives in **one Python file**. There is no installer or executable release in this version. The `.ico` file is optional: the app draws its own icon even when you only download the script.
+The source application lives in **one Python file**. For Windows without Python, use the supplied portable Windows ZIP, extract the entire folder and run **LumaShot.exe**. Keep the `_internal` folder beside it. To build it yourself, double-click [build_exe.bat](build_exe.bat); see the [build guide](docs/BUILD.md). The `.ico` file is optional: the app draws its own icon even when you only download the script.
 
 <details>
 <summary>Prefer a separate Python environment?</summary>
@@ -88,7 +88,7 @@ Use a combination such as `Ctrl+Alt+K`, an F key, or `Print Screen`. Sequences o
 | Key | Action |
 |---|---|
 | `Print Screen` / `Ctrl+Shift+F9` | Start a capture, when available |
-| `V` | Move the selection or resize it using the corners |
+| `V` | Move the selection or resize it using the four corners or four edge midpoints |
 | `P` / `L` / `A` | Pen / line / arrow |
 | `R` | Rectangle |
 | `T` | Add text; Enter confirms it |
@@ -100,7 +100,7 @@ Use a combination such as `Ctrl+Alt+K`, an F key, or `Print Screen`. Sequences o
 
 When a text field is open, **Esc** discards that text first. Moving the selection changes the crop; annotations remain anchored to their original screen positions.
 
-Left-click the tray icon to select an area. Right-click it for the three actions: **Select an area**, **Open LumaShot**, and **Quit**.
+Left-click the tray icon to select an area. Right-click it for **Select an area**, **Full screen**, **Record video**, **Open LumaShot**, and **Quit**. During recording, the video entry becomes **Stop and review**, and screenshot entries are disabled.
 
 Closing the main window keeps LumaShot in the system tray when it is available. Right-click its petrol-green icon and choose **Quit** to exit completely. A second launch reopens the running app.
 
@@ -126,13 +126,13 @@ Preferences are written atomically to **LumaShot.settings.json** next to the Pyt
 1. Set **Microphone** and **Computer audio** in the **Record video** tab. Both start off and are remembered independently.
 2. Click **Record video** or press **Ctrl+Shift+F11**, then drag a region across one or more monitors. The compact control bar appears above the selection; adjust the selection if needed.
 3. Click **Start** in the bar. The same bar stays in place with **Stop**, elapsed time, microphone and computer-audio buttons, and **×**. Audio icons show their current on/off state and have translated tooltips.
-4. Click **Stop** to finalize the MP4 in the capture folder. **×** cancels before recording starts; during recording it stops and saves. The tray also offers Stop and save. Quit finishes the recording before exiting.
+4. Click **Stop** to open the video preview. **×** cancels before recording starts; during recording it stops and opens the same preview. Choose **Save… → Default folder** or **Choose location…**, or discard the recording. Quit also waits for your decision before exiting.
 
 Video uses H.264/AAC in MP4, targeting 20 fps at the selected area's native resolution. Odd dimensions are padded by one black pixel for the encoder. No external FFmpeg executable is needed. The microphone and playback device are the Windows defaults at the time each source is enabled. Change the default in Windows, then toggle that source off and on to switch devices. Audio input is released when switched off. Disabled sources contribute silence, so they can be enabled later in the same file. Protected audio/video may not be capturable.
 
 The bar stays above the selected area. At a screen edge it moves inside the region and stays usable with the mouse. Windows capture exclusion omits both the bar and its tooltips from the video. If exclusion is unavailable and the bar would overlap the video, Start is blocked with an explanation; selecting an area with room above it is still supported. Very large regions depend on the available encoder and computer performance. Encoder failures are reported; a partially written MP4 is not presented as a successful recording. Recording controls and tooltips are translated into all three languages.
 
-The video shortcut is editable in **Global shortcuts → Select / Start / Stop video**. Its default is **Ctrl+Shift+F11**: select an area, press it again to start, and press it during recording to stop and save. It can be disabled independently; conflicts preserve the previous working shortcut. Shortcut entry fields never trigger recording while being edited.
+The video shortcut is editable in **Global shortcuts → Select / Start / Stop video**. Its default is **Ctrl+Shift+F11**: select an area, press it again to start, and press it during recording to stop and review. It can be disabled independently; conflicts preserve the previous working shortcut. Shortcut entry fields never trigger recording while being edited.
 
 The magnifier/zoom feature is deferred and is not included in this version.
 
@@ -178,7 +178,7 @@ python -m pip install -r requirements.txt
 python -m unittest discover -s tests -v
 ```
 
-The 48 local tests cover themes, optional independent shortcuts, tray clicks, cursor routing, remembered areas, full-screen editing and instant saving, notifications, crop resolution, rendering, undo/redo, PNG/JPEG export, copy, cancelled saves, language switching, toolbar placement, the collapsed palette, shortcut persistence, conflict handling and tooltip content, sizing and dismissal. Additional checks cover JSON migration/recovery, cross-monitor coordinates, persistent recording-bar transitions, video hotkey conflicts and an MP4 encode/decode round trip with independent synthetic audio toggles. They use Qt's offscreen backend; they do not replace testing real multi-monitor or global-hotkey behavior.
+The 65 local tests cover themes, optional independent shortcuts, tray clicks, cursor routing, remembered areas, full-screen editing and instant saving, notifications, crop resolution, rendering, undo/redo, PNG/JPEG export, copy, cancelled saves, language switching, toolbar placement, the collapsed palette, shortcut persistence, conflict handling and tooltip content, sizing and dismissal. Additional checks cover JSON migration/recovery, cross-monitor coordinates, persistent recording-bar transitions, video hotkey conflicts and an MP4 encode/decode round trip with independent synthetic audio toggles. They use Qt's offscreen backend; they do not replace testing real multi-monitor or global-hotkey behavior.
 
 | File | Purpose |
 |---|---|
@@ -204,3 +204,57 @@ Bundled Lucide SVGs retain their ISC/MIT terms and notices. PySide6 and Qt are i
 This repository distributes Python source and original project assets, not Lightshot or Greenshot code, logos or binaries. The project is independent of those products.
 
 Improvements and translations are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+
+
+## Recording improvements in 0.3.0
+
+The recording bar includes **Pause / Resume**. Pause freezes the timer, releases
+the audio inputs and excludes the paused time from the saved file. Resume continues
+the same MP4. You can also stop while paused, then review the recording and choose whether to save.
+
+A thin red outline identifies the recorded area; it becomes amber while paused.
+It does not intercept mouse clicks. Windows excludes the outline from capture;
+if exclusion is unavailable, the lines are positioned outside the selected pixels.
+At a display edge this fallback can be partially or completely off-screen.
+
+Audio uses 48 kHz stereo AAC with an explicit 256 kb/s target. WASAPI captures
+stereo with a larger input buffer, and a 150 ms submission buffer absorbs scheduling
+jitter without shifting the audio timestamps. The old default quality mode could
+produce very low AAC bitrates. Stereo separation and 12 kHz content are checked in
+an encoded/decoded test, including bursty input delivery. Physical audio devices
+and unusual driver configurations still need testing on the user's computer.
+
+Qt may print codec probing messages (including unavailable AV1 encoders) and the
+MP4 frame-size warning; LumaShot uses H.264 and checks final output in tests.
+Console Ctrl+C behavior is unchanged. The EXE opens without a console.
+
+
+## Startup, video review and annotation editing
+
+**General → Start with Windows** controls per-user startup. It is off by default.
+When enabled, LumaShot starts in the tray at Windows sign-in; turn the checkbox off
+to remove its startup entry. Python launches use the current Python environment,
+so keep that environment and the script in place. After moving the application,
+toggle startup off and on to update its path.
+
+Recordings are temporary until you decide to keep them. After Stop, the preview
+offers playback, pause, seeking and preview mute. **Save…** opens two choices:
+the default capture folder, or a location selected in a save dialog. Canceling that
+dialog keeps the preview open. Save copies the original MP4 without re-encoding;
+a failed save keeps the original draft available for retry. **Discard recording**
+removes the unsaved draft. Closing the preview asks what to do; quitting during
+recording also waits for this choice. A custom save location does not change your
+default capture folder.
+
+![Video review](assets/video-review-en-light.png)
+
+In **Move / resize (V)**, hold **Shift** and click an annotation to select it.
+Shift-drag the annotation to move it, or drag its handles while holding Shift to
+resize it. Lines and arrows have editable endpoints; rectangles, highlights,
+freehand strokes and text have bounding handles. **Shift + double-click** on text
+opens its text editor; Enter confirms and Esc cancels the text change. The palette
+and thickness control apply to the selected object. **Shift+Delete** removes it.
+**Ctrl+Z / Ctrl+Y** undo and redo both drawing and editing. A normal click returns
+to adjusting the capture region. Editing handles are not exported in screenshots.
+
+![Selected annotation with handles](assets/object-editing.png)

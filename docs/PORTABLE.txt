@@ -1,0 +1,30 @@
+LumaShot 0.4.0 - Windows x64
+
+RO: Extrage intregul ZIP intr-un dosar in care poti scrie, apoi deschide
+LumaShot.exe. Pastreaza dosarul _internal langa exe. Python nu este necesar.
+Setarile se creeaza automat in LumaShot.settings.json langa exe.
+Clic stanga pe tray: selectare zona. Clic dreapta: zona, ecran complet,
+video, deschide aplicatia, iesire. Video devine Stop in timpul inregistrarii.
+Pentru actualizare, inchide aplicatia si pastreaza JSON-ul cu setari.
+
+EN: Extract the entire ZIP to a writable folder and run LumaShot.exe.
+Keep _internal next to the executable. No separate Python install is needed.
+Preferences are created in LumaShot.settings.json next to the executable.
+Tray left-click selects an area. Right-click offers area, full screen,
+video, open and quit. Video becomes Stop and save during recording.
+Close the app before updating; keep your settings JSON.
+
+RU: Распакуйте весь ZIP в папку с правом записи и запустите LumaShot.exe.
+Папку _internal нужно сохранить рядом с exe. Установка Python не нужна.
+Настройки сохраняются в LumaShot.settings.json рядом с exe.
+Левая кнопка в трее: область. Правая: область, весь экран, видео,
+открыть приложение и выход. Во время записи видео заменяется остановкой.
+Перед обновлением закройте приложение и сохраните JSON с настройками.
+
+Source and updates: https://github.com/TOKKAB1/LumaShot
+Build instructions: BUILD.md
+Original code: MIT. Dependency notices: THIRD_PARTY_NOTICES.md and licenses/.
+
+0.4.0: General -> Start with Windows (optional); Stop -> video review -> Save or Discard.
+Save -> Default folder or Choose location. Hold Shift in Move/resize to edit annotations;
+Shift+double-click edits text. Ctrl+Z/Ctrl+Y undo and redo changes.

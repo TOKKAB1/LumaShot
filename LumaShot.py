@@ -1,7 +1,7 @@
 # Original LumaShot code and artwork: MIT. Bundled icons retain their own notices.
 LUMASHOT_LICENSE = 'MIT License\n\nCopyright (c) 2026 TOKKAB1\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the "Software"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n'
 
-# LumaShot 0.1 — Python + PySide6. Run: python LumaShot.py
+# LumaShot 0.4.0 — Python + PySide6. Run: python LumaShot.py
 """All user-visible copy, shared by the dashboard, tray and capture editor."""
 
 LANGUAGES = {"ro": "Română", "ru": "Русский", "en": "English"}
@@ -274,6 +274,7 @@ def tr(language, message_key, **values):
 
 """Vector annotations rendered identically on screen and in the exported bitmap."""
 from dataclasses import dataclass, field
+from copy import deepcopy
 import math
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPen, QPolygonF
@@ -288,24 +289,133 @@ class Mark:
     width: int = 3
     text: str = ""
     points: list = field(default_factory=list)
+    font_size: float = 0
+    text_scale_x: float = 1
+    number_radius: float = 0
 
 
 class History:
     def __init__(self):
         self.items = []
+        self.past = []
         self.future = []
 
     def add(self, mark):
+        self.past.append((len(self.items), None, deepcopy(mark)))
         self.items.append(mark)
         self.future.clear()
 
+    def replace(self, index, mark):
+        before = deepcopy(self.items[index])
+        self.items[index] = deepcopy(mark)
+        self.record_edit(index, before)
+
+    def record_edit(self, index, before):
+        after = self.items[index]
+        if before != after:
+            self.past.append((index, deepcopy(before), deepcopy(after)))
+            self.future.clear()
+
+    def remove(self, index):
+        self.past.append((index, deepcopy(self.items.pop(index)), None))
+        self.future.clear()
+
+    def apply(self, command, reverse=False):
+        index, before, after = command
+        if reverse:
+            before, after = after, before
+        if after is None:
+            self.items.pop(index)
+        elif before is None:
+            self.items.insert(index, deepcopy(after))
+        else:
+            self.items[index] = deepcopy(after)
+
     def undo(self):
-        if self.items:
-            self.future.append(self.items.pop())
+        if self.past:
+            command = self.past.pop()
+            self.apply(command, reverse=True)
+            self.future.append(command)
 
     def redo(self):
         if self.future:
-            self.items.append(self.future.pop())
+            command = self.future.pop()
+            self.apply(command)
+            self.past.append(command)
+
+
+def text_font(mark):
+    font = QFont("Segoe UI")
+    font.setPixelSize(max(6, round(mark.font_size or (16 + mark.width*2))))
+    return font
+
+
+def mark_bounds(mark):
+    from PySide6.QtGui import QFontMetricsF
+    if mark.kind == "text":
+        r = QFontMetricsF(text_font(mark)).boundingRect(mark.text or " ")
+        return QRectF(mark.start.x()+r.x()*mark.text_scale_x, mark.start.y()+r.y(),
+                      max(1, r.width()*mark.text_scale_x), max(1, r.height()))
+    if mark.kind == "number":
+        radius = mark.number_radius or 13+mark.width
+        return QRectF(mark.start.x()-radius, mark.start.y()-radius, radius*2, radius*2)
+    points = [mark.start, mark.end, *mark.points]
+    left, top = min(p.x() for p in points), min(p.y() for p in points)
+    return QRectF(left, top, max(1, max(p.x() for p in points)-left),
+                  max(1, max(p.y() for p in points)-top))
+
+
+def rect_handles(rect):
+    return {"tl": rect.topLeft(), "tr": rect.topRight(), "bl": rect.bottomLeft(), "br": rect.bottomRight(),
+            "t": QPointF(rect.center().x(), rect.top()), "b": QPointF(rect.center().x(), rect.bottom()),
+            "l": QPointF(rect.left(), rect.center().y()), "r": QPointF(rect.right(), rect.center().y())}
+
+
+def segment_distance(point, start, end):
+    delta = end-start
+    length = delta.x()**2+delta.y()**2
+    fraction = max(0, min(1, ((point.x()-start.x())*delta.x()+(point.y()-start.y())*delta.y())/length)) if length else 0
+    nearest = start+delta*fraction
+    return math.hypot(point.x()-nearest.x(), point.y()-nearest.y())
+
+
+def mark_hit(mark, point):
+    tolerance = max(6, mark.width/2+3)
+    bounds = mark_bounds(mark)
+    if mark.kind in ("text", "highlight", "mask"):
+        return bounds.adjusted(-4, -4, 4, 4).contains(point)
+    if mark.kind == "number":
+        return math.hypot(point.x()-mark.start.x(), point.y()-mark.start.y()) <= bounds.width()/2+tolerance
+    if mark.kind in ("line", "arrow", "pen"):
+        points = [mark.start, *(mark.points if mark.kind == "pen" else []), mark.end]
+        if any(segment_distance(point, a, b) <= tolerance for a, b in zip(points, points[1:])):
+            return True
+        if mark.kind == "arrow":
+            angle = math.atan2(mark.end.y()-mark.start.y(), mark.end.x()-mark.start.x())
+            for offset in (-.48, .48):
+                tip = mark.end-QPointF(math.cos(angle+offset), math.sin(angle+offset))*max(12, mark.width*4)
+                if segment_distance(point, mark.end, tip) <= tolerance:
+                    return True
+        return False
+    return bounds.adjusted(-tolerance, -tolerance, tolerance, tolerance).contains(point) and not bounds.adjusted(tolerance, tolerance, -tolerance, -tolerance).contains(point)
+
+
+def resize_mark(mark, target):
+    result = deepcopy(mark)
+    old = mark_bounds(mark)
+    sx, sy = target.width()/old.width(), target.height()/old.height()
+    def mapped(point):
+        return QPointF(target.left()+(point.x()-old.left())*sx, target.top()+(point.y()-old.top())*sy)
+    result.start, result.end = mapped(mark.start), mapped(mark.end)
+    result.points = [mapped(point) for point in mark.points]
+    if mark.kind == "text":
+        result.font_size = max(6, min(512, (mark.font_size or 16+mark.width*2)*sy))
+        actual_sy = result.font_size/(mark.font_size or 16+mark.width*2)
+        result.text_scale_x = max(.05, min(20, mark.text_scale_x*sx/actual_sy))
+    elif mark.kind == "number":
+        result.number_radius = max(6, min(target.width(), target.height())/2)
+        result.font_size = 16*result.number_radius/(13+mark.width)
+    return result
 
 
 def paint_mark(painter, mark):
@@ -345,18 +455,18 @@ def paint_mark(painter, mark):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         painter.fillRect(rect.toAlignedRect(), QColor("#111118"))
     elif mark.kind == "text":
-        font = QFont("Segoe UI")
-        font.setPixelSize(16 + mark.width * 2)
-        painter.setFont(font)
-        painter.drawText(mark.start, mark.text)
+        painter.setFont(text_font(mark))
+        painter.translate(mark.start)
+        painter.scale(mark.text_scale_x, 1)
+        painter.drawText(QPointF(), mark.text)
     elif mark.kind == "number":
-        radius = 13 + mark.width
+        radius = mark.number_radius or 13 + mark.width
         painter.setBrush(color)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(mark.start, radius, radius)
         painter.setPen(QColor("#ffffff") if color.lightness() < 180 else QColor("#111118"))
         font = QFont("Segoe UI", weight=QFont.Weight.Bold)
-        font.setPixelSize(16)
+        font.setPixelSize(max(6, round(mark.font_size or 16)))
         painter.setFont(font)
         painter.drawText(QRectF(mark.start.x()-radius, mark.start.y()-radius,
                                 radius*2, radius*2), Qt.AlignmentFlag.AlignCenter, mark.text)
@@ -426,6 +536,12 @@ from functools import lru_cache
 from PySide6.QtCore import QByteArray, QSize
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtSvg import QSvgRenderer
+
+# Simple original transport glyphs, using the same stroke style as the toolbar.
+LUCIDE_SVGS.update({
+    "pause": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>',
+    "resume": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M7 4 20 12 7 20Z"/></svg>',
+})
 
 
 @lru_cache(maxsize=80)
@@ -500,6 +616,9 @@ class CaptureOverlay(QWidget):
         self.color = COLORS[1]
         self.stroke = 3
         self.editor = None
+        self.editing_text_index = None
+        self.selected_mark = None
+        self.shift_pressed = False
         self.setMouseTracking(True)
         self.setCursor(Qt.CursorShape.CrossCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -528,7 +647,10 @@ class CaptureOverlay(QWidget):
         button.setIcon(ui_icon(key, theme_colors(self.theme)["fg"]))
         button.setIconSize(QSize(18, 18))
         shortcut = {"copy": "Ctrl+C", "save": "Ctrl+S", "cancel": "Esc"}.get(key)
-        button.setToolTip(wrapped_tip(self.t(key) + ("\n" + shortcut if shortcut else "")))
+        tip = self.t(key) + ("\n" + shortcut if shortcut else "")
+        if key == "move":
+            tip += "\n" + self.t("object_hint")
+        button.setToolTip(wrapped_tip(tip))
         button.setToolTipDuration(12000)
         button.setAccessibleName(self.t(key))
         button.setCheckable(checkable)
@@ -583,6 +705,7 @@ class CaptureOverlay(QWidget):
         width_row = QHBoxLayout()
         width_row.addWidget(QLabel(self.t("width")))
         width = QSpinBox()
+        self.stroke_spin = width
         width.setRange(1, 12)
         width.setValue(self.stroke)
         width.setFixedWidth(48)
@@ -608,6 +731,11 @@ class CaptureOverlay(QWidget):
 
     def set_color(self, color):
         self.color = color
+        if self.current_mark() is not None and self.current_mark().color != color:
+            mark = deepcopy(self.current_mark())
+            mark.color = color
+            self.history.replace(self.selected_mark, mark)
+            self.update()
         border_color = theme_colors(self.theme)["raised"]
         self.color_button.setStyleSheet(
             f"QPushButton {{ background:{color}; border:5px solid {border_color}; border-radius:3px; min-height:16px; max-height:16px; }}")
@@ -641,6 +769,13 @@ class CaptureOverlay(QWidget):
 
     def set_stroke(self, value):
         self.stroke = value
+        if self.current_mark() is not None and self.current_mark().width != value:
+            mark = deepcopy(self.current_mark())
+            mark.width = value
+            if mark.kind == "text":
+                mark.font_size = 0
+            self.history.replace(self.selected_mark, mark)
+            self.update()
 
     def set_tool(self, tool):
         if tool not in self.tool_buttons:
@@ -648,6 +783,7 @@ class CaptureOverlay(QWidget):
         self.commit_text()
         self.palette.hide()
         self.tool = tool
+        self.selected_mark = None
         for key, button in self.tool_buttons.items():
             button.setChecked(key == tool)
         self.setFocus()
@@ -656,10 +792,12 @@ class CaptureOverlay(QWidget):
     def undo(self):
         self.commit_text()
         self.history.undo()
+        self.selected_mark = None
         self.update()
 
     def redo(self):
         self.history.redo()
+        self.selected_mark = None
         self.update()
 
     def position_panel(self):
@@ -696,7 +834,9 @@ class CaptureOverlay(QWidget):
             p.save()
             p.setClipRect(self.selection)
             p.drawImage(QRectF(self.rect()), self.screen_image)
-            for mark in self.history.items:
+            for index, mark in enumerate(self.history.items):
+                if self.editor and index == self.editing_text_index:
+                    continue
                 paint_mark(p, mark)
             if self.active_mark:
                 paint_mark(p, self.active_mark)
@@ -704,11 +844,18 @@ class CaptureOverlay(QWidget):
             p.setPen(QPen(QColor("#67cfb1"), 1, Qt.PenStyle.DashLine))
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.drawRect(self.selection)
-            if self.tool == "move" or not self.history.items:
+            if (self.tool == "move" and not self.shift_pressed and self.current_mark() is None) or not self.history.items:
                 p.setBrush(QColor("#ffffff"))
                 p.setPen(QColor("#118769"))
                 for pt in self.handles().values():
                     p.drawRect(QRectF(pt.x()-3, pt.y()-3, 6, 6))
+            if self.tool == "move" and self.current_mark() is not None:
+                p.setPen(QPen(QColor("#f2bb53" if self.theme == "dark" else "#9a6309"), 1, Qt.PenStyle.DashLine))
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.drawRect(mark_bounds(self.current_mark()))
+                p.setBrush(QColor("white"))
+                for point in self.object_handles().values():
+                    p.drawRect(QRectF(point.x()-4, point.y()-4, 8, 8))
             label = f"{round(self.selection.width()*self.scale)} × {round(self.selection.height()*self.scale)} px"
             p.setFont(QFont("Segoe UI", 10))
             box = QRectF(self.selection.left(), max(5, self.selection.top()-30), 155, 25)
@@ -726,11 +873,106 @@ class CaptureOverlay(QWidget):
     def handles(self):
         r = self.selection
         return {"tl": r.topLeft(), "tr": r.topRight(),
-                "bl": r.bottomLeft(), "br": r.bottomRight()}
+                "bl": r.bottomLeft(), "br": r.bottomRight(),
+                "t": QPointF(r.center().x(), r.top()),
+                "r": QPointF(r.right(), r.center().y()),
+                "b": QPointF(r.center().x(), r.bottom()),
+                "l": QPointF(r.left(), r.center().y())}
+
+    def handle_at(self, pos):
+        if self.selection.isEmpty():
+            return None
+        key, point = min(self.handles().items(), key=lambda item: (item[1]-pos).manhattanLength())
+        return key if (point-pos).manhattanLength() <= 14 else None
 
     def bounded(self, point):
         return QPointF(max(0, min(point.x(), self.width())),
                        max(0, min(point.y(), self.height())))
+
+    def current_mark(self):
+        if self.selected_mark is not None and 0 <= self.selected_mark < len(self.history.items):
+            return self.history.items[self.selected_mark]
+        return None
+
+    def object_handles(self):
+        mark = self.current_mark()
+        if mark is None:
+            return {}
+        return {"start": mark.start, "end": mark.end} if mark.kind in ("line", "arrow") else rect_handles(mark_bounds(mark))
+
+    def object_handle_at(self, pos):
+        handles = self.object_handles()
+        if not handles:
+            return None
+        key, point = min(handles.items(), key=lambda item: (item[1]-pos).manhattanLength())
+        mark = self.current_mark()
+        bounds = mark_bounds(mark)
+        tolerance = 10 if mark.kind in ("line", "arrow") else max(4, min(8, bounds.width()/3, bounds.height()/3))
+        return key if (point-pos).manhattanLength() <= tolerance else None
+
+    def object_at(self, pos):
+        if not self.selection.contains(pos):
+            return None
+        return next((index for index in reversed(range(len(self.history.items)))
+                     if mark_hit(self.history.items[index], pos)), None)
+
+    def begin_object_drag(self, pos):
+        handle = self.object_handle_at(pos)
+        if handle is None:
+            self.selected_mark = self.object_at(pos)
+        if self.current_mark() is not None:
+            self.set_color(self.current_mark().color)
+            self.stroke = self.current_mark().width
+            self.stroke_spin.blockSignals(True)
+            self.stroke_spin.setValue(self.stroke)
+            self.stroke_spin.blockSignals(False)
+            self.object_original = deepcopy(self.current_mark())
+            self.object_drag_handle = handle
+            self.drag_mode = "object"
+            self.hide_panels()
+        self.update()
+
+    def drag_object(self, pos):
+        mark = self.object_original
+        handle = self.object_drag_handle
+        pos = QPointF(max(self.selection.left(), min(pos.x(), self.selection.right())),
+                      max(self.selection.top(), min(pos.y(), self.selection.bottom())))
+        if handle is None:
+            delta = pos-self.origin
+            bounds = mark_bounds(mark)
+            dx = max(self.selection.left()-bounds.left(), min(delta.x(), self.selection.right()-bounds.right()))
+            dy = max(self.selection.top()-bounds.top(), min(delta.y(), self.selection.bottom()-bounds.bottom()))
+            delta = QPointF(dx, dy)
+            result = deepcopy(mark)
+            result.start += delta
+            result.end += delta
+            result.points = [point+delta for point in mark.points]
+        elif handle in ("start", "end"):
+            result = deepcopy(mark)
+            setattr(result, handle, pos)
+        else:
+            target = mark_bounds(mark)
+            if "l" in handle:
+                target.setLeft(min(pos.x(), target.right()-3))
+            if "r" in handle:
+                target.setRight(max(pos.x(), target.left()+3))
+            if "t" in handle:
+                target.setTop(min(pos.y(), target.bottom()-3))
+            if "b" in handle:
+                target.setBottom(max(pos.y(), target.top()+3))
+            result = resize_mark(mark, target)
+        self.history.items[self.selected_mark] = result
+
+    def mouseDoubleClickEvent(self, event):
+        if self.tool == "move" and event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            self.commit_text()
+            index = self.object_at(event.position())
+            if index is not None and self.history.items[index].kind == "text":
+                self.selected_mark = index
+                self.drag_mode = None
+                self.begin_text(self.history.items[index].start, index)
+                return
+        super().mouseDoubleClickEvent(event)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.RightButton:
@@ -742,6 +984,11 @@ class CaptureOverlay(QWidget):
         self.commit_text()
         pos = self.bounded(event.position())
         self.origin = pos
+        self.shift_pressed = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+        if self.tool == "move" and self.shift_pressed and not self.selection.isEmpty():
+            self.begin_object_drag(pos)
+            return
+        self.selected_mark = None
         if self.selection.isEmpty():
             self.chosen.emit(self)
             self.drag_mode = "select"
@@ -749,10 +996,7 @@ class CaptureOverlay(QWidget):
             self.selection = QRectF(pos, pos)
         elif self.tool == "move":
             self.old_selection = QRectF(self.selection)
-            self.drag_mode = "move" if self.selection.contains(pos) else None
-            for key, pt in self.handles().items():
-                if (pt-pos).manhattanLength() <= 14:
-                    self.drag_mode = key
+            self.drag_mode = self.handle_at(pos) or ("move" if self.selection.contains(pos) else None)
             if self.drag_mode:
                 self.hide_panels()
         elif self.selection.contains(pos):
@@ -768,7 +1012,10 @@ class CaptureOverlay(QWidget):
 
     def mouseMoveEvent(self, event):
         pos = self.bounded(event.position())
-        if self.drag_mode == "select":
+        self.shift_pressed = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+        if self.drag_mode == "object":
+            self.drag_object(pos)
+        elif self.drag_mode == "select":
             self.selection = QRectF(self.origin, pos).normalized()
         elif self.drag_mode == "draw" and self.active_mark:
             pos = QPointF(max(self.selection.left(), min(pos.x(), self.selection.right())),
@@ -787,6 +1034,35 @@ class CaptureOverlay(QWidget):
             opposite = {"tl": r.bottomRight(), "tr": r.bottomLeft(),
                         "bl": r.topRight(), "br": r.topLeft()}[self.drag_mode]
             self.selection = QRectF(opposite, pos).normalized()
+        elif self.drag_mode in ("t", "r", "b", "l"):
+            r = QRectF(self.old_selection)
+            if self.drag_mode == "t":
+                r.setTop(pos.y())
+            elif self.drag_mode == "b":
+                r.setBottom(pos.y())
+            elif self.drag_mode == "l":
+                r.setLeft(pos.x())
+            else:
+                r.setRight(pos.x())
+            self.selection = r.normalized()
+        cursor = Qt.CursorShape.CrossCursor
+        if self.tool == "move" and not self.selection.isEmpty():
+            target = self.drag_mode or self.handle_at(pos)
+            cursor = {"tl": Qt.CursorShape.SizeFDiagCursor, "br": Qt.CursorShape.SizeFDiagCursor,
+                      "tr": Qt.CursorShape.SizeBDiagCursor, "bl": Qt.CursorShape.SizeBDiagCursor,
+                      "t": Qt.CursorShape.SizeVerCursor, "b": Qt.CursorShape.SizeVerCursor,
+                      "l": Qt.CursorShape.SizeHorCursor, "r": Qt.CursorShape.SizeHorCursor,
+                      "move": Qt.CursorShape.SizeAllCursor}.get(target,
+                      Qt.CursorShape.SizeAllCursor if self.selection.contains(pos) else cursor)
+            if self.shift_pressed or self.drag_mode == "object":
+                handle = self.object_drag_handle if self.drag_mode == "object" else self.object_handle_at(pos)
+                cursor = {"tl": Qt.CursorShape.SizeFDiagCursor, "br": Qt.CursorShape.SizeFDiagCursor,
+                          "tr": Qt.CursorShape.SizeBDiagCursor, "bl": Qt.CursorShape.SizeBDiagCursor,
+                          "l": Qt.CursorShape.SizeHorCursor, "r": Qt.CursorShape.SizeHorCursor,
+                          "t": Qt.CursorShape.SizeVerCursor, "b": Qt.CursorShape.SizeVerCursor,
+                          "start": Qt.CursorShape.SizeAllCursor, "end": Qt.CursorShape.SizeAllCursor}.get(handle,
+                          Qt.CursorShape.SizeAllCursor if self.object_at(pos) is not None else Qt.CursorShape.ArrowCursor)
+        self.setCursor(cursor)
         self.update()
 
     def mouseReleaseEvent(self, event):
@@ -795,6 +1071,8 @@ class CaptureOverlay(QWidget):
         if self.drag_mode == "draw" and self.active_mark:
             self.history.add(self.active_mark)
             self.active_mark = None
+        elif self.drag_mode == "object" and self.current_mark() is not None:
+            self.history.record_edit(self.selected_mark, self.object_original)
         self.drag_mode = None
         if self.selection.width() < 4 or self.selection.height() < 4:
             self.selection = QRectF()
@@ -803,14 +1081,22 @@ class CaptureOverlay(QWidget):
             self.position_panel()
         self.update()
 
-    def begin_text(self, pos):
+    def begin_text(self, pos, index=None):
         self.text_pos = pos
+        self.editing_text_index = index
         self.editor = QLineEdit(self)
         self.editor.setPlaceholderText(self.t("text_prompt"))
         self.editor.setAccessibleName(self.t("text"))
         self.editor.setGeometry(max(0, min(int(pos.x()), self.width()-350)),
                                 max(0, min(int(pos.y())-25, self.height()-44)), 345, 40)
         self.editor.returnPressed.connect(self.commit_text)
+        if index is not None:
+            mark = self.history.items[index]
+            self.editor.setText(mark.text)
+            font = text_font(mark)
+            font.setPixelSize(min(28, font.pixelSize()))
+            self.editor.setFont(font)
+            self.editor.selectAll()
         self.editor.show()
         self.editor.setFocus()
 
@@ -819,7 +1105,16 @@ class CaptureOverlay(QWidget):
             text = self.editor.text().strip()
             self.editor.deleteLater()
             self.editor = None
-            if text:
+            index, self.editing_text_index = self.editing_text_index, None
+            if index is not None:
+                if text:
+                    mark = deepcopy(self.history.items[index])
+                    mark.text = text
+                    self.history.replace(index, mark)
+                else:
+                    self.history.remove(index)
+                    self.selected_mark = None
+            elif text:
                 self.history.add(Mark("text", self.text_pos, self.text_pos,
                                       self.color, self.stroke, text))
             self.setFocus()
@@ -835,12 +1130,17 @@ class CaptureOverlay(QWidget):
             self.finished.emit(action, image)
 
     def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Shift:
+            self.shift_pressed = True
+            self.update()
+            return
         if event.key() == Qt.Key.Key_Escape:
             if self.palette.isVisible():
                 self.palette.hide()
             elif self.editor:
                 self.editor.deleteLater()
                 self.editor = None
+                self.editing_text_index = None
                 self.setFocus()
             else:
                 self.complete("cancel")
@@ -853,6 +1153,10 @@ class CaptureOverlay(QWidget):
             self.undo()
         elif event.matches(QKeySequence.StandardKey.Redo):
             self.redo()
+        elif event.key() == Qt.Key.Key_Delete and self.shift_pressed and self.current_mark() is not None:
+            self.history.remove(self.selected_mark)
+            self.selected_mark = None
+            self.update()
         elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             # Enter only confirms an active text annotation, handled by QLineEdit.
             event.accept()
@@ -863,6 +1167,12 @@ class CaptureOverlay(QWidget):
                     break
         else:
             super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event):
+        if event.key() == Qt.Key.Key_Shift:
+            self.shift_pressed = False
+            self.update()
+        super().keyReleaseEvent(event)
 
 
 """LumaShot: local-only screenshot tool for Windows. Python + PySide6."""
@@ -1239,10 +1549,11 @@ from PySide6.QtCore import QObject, QUrl, QEvent
 class JsonSettings:
     """Portable preferences; replace atomically, preserving damaged input for recovery."""
     def __init__(self, path=None, migrate=True):
-        self.path = Path(path) if path else Path(__file__).resolve().with_name("LumaShot.settings.json")
+        program = Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve()
+        self.path = Path(path) if path else program.with_name("LumaShot.settings.json")
         self.error = ""
         self.on_error = None
-        self.data = dict(language="ro", theme="light", notifications=True, remember_area=False,
+        self.data = dict(language="ro", theme="light", start_windows=False, notifications=True, remember_area=False,
                          include_cursor=False, capture_hotkey_enabled=True, capture_hotkey="",
                          full_hotkey_enabled=False, full_hotkey="Ctrl+Shift+F10",
                          record_hotkey_enabled=True, record_hotkey="Ctrl+Shift+F11", save_format="PNG",
@@ -1467,7 +1778,7 @@ class AudioSource:
     """WASAPI source opened only while enabled. All COM use stays on its worker."""
     def __init__(self, kind):
         self.kind = kind
-        self.blocks = queue.Queue(maxsize=10)
+        self.blocks = queue.Queue(maxsize=100)
         self.stop_event = threading.Event()
         self.error = None
         self.thread = threading.Thread(target=self.run, daemon=True, name="LumaShot-"+kind)
@@ -1489,31 +1800,21 @@ class AudioSource:
                 device = sc.get_microphone(id=speaker.id, include_loopback=True)
             if device is None:
                 raise RuntimeError("No default input device")
-            # Capture all native channels: selecting one WASAPI channel can corrupt audio.
-            with device.recorder(samplerate=48000, blocksize=960) as recorder:
+            # Request stereo in WASAPI shared mode, so Windows performs any native
+            # surround downmix. A larger device buffer prevents small-block underruns.
+            with device.recorder(samplerate=48000, channels=2, blocksize=4800) as recorder:
                 while not self.stop_event.is_set():
                     samples = recorder.record(numframes=960)
                     if samples.shape[1] == 1:
                         samples = np.repeat(samples, 2, axis=1)
-                    elif samples.shape[1] > 2:
-                        # Include centre/surround content when the default device is multichannel.
-                        extra = samples[:, 2:].mean(axis=1, keepdims=True)
-                        samples = (samples[:, :2] + extra) * .5
-                    else:
-                        samples = samples[:, :2]
+                    elif samples.shape[1] != 2:
+                        raise RuntimeError("The audio device did not provide a stereo stream")
                     if self.stop_event.is_set():
                         break
                     try:
                         self.blocks.put_nowait(samples.copy())
                     except queue.Full:
-                        try:
-                            self.blocks.get_nowait()
-                        except queue.Empty:
-                            pass
-                        try:
-                            self.blocks.put_nowait(samples.copy())
-                        except queue.Full:
-                            pass
+                        raise RuntimeError("Audio capture buffer overflow; the computer cannot keep up")
         except Exception as error:
             self.error = str(error)
         finally:
@@ -1540,6 +1841,7 @@ class VideoRecording(QObject):
     finished = Signal(str, str)
     audio_failed = Signal(str, str)
     started = Signal()
+    paused_changed = Signal(bool)
 
     def __init__(self, rect, path, cursor=False, parent=None, grab_factory=DesktopGrab):
         super().__init__(parent)
@@ -1551,6 +1853,10 @@ class VideoRecording(QObject):
         self.audio_enabled = {}
         self.retired_sources = []
         self.active = self.stopping = self.done = False
+        self.paused = False
+        self.pause_time = self.paused_seconds = 0.0
+        self._pumping_audio = False
+        self.audio_start_frames = {}
         self.audio_frames = 0
         self.next_video = 0.0
         self.pending_audio = None
@@ -1567,9 +1873,11 @@ class VideoRecording(QObject):
         self.recorder.setVideoResolution(self.size)
         self.recorder.setVideoFrameRate(20)
         self.recorder.setQuality(QMediaRecorder.Quality.HighQuality)
+        self.recorder.setEncodingMode(QMediaRecorder.EncodingMode.AverageBitRateEncoding)
+        self.recorder.setVideoBitRate(max(2000000, min(30000000, self.size.width()*self.size.height()*4)))
         self.recorder.setAudioSampleRate(48000)
         self.recorder.setAudioChannelCount(2)
-        self.recorder.setAudioBitRate(192000)
+        self.recorder.setAudioBitRate(256000)
         self.recorder.setOutputLocation(QUrl.fromLocalFile(self.path))
         video_format = QVideoFrameFormat(self.size, QVideoFrameFormat.PixelFormat.Format_BGRX8888)
         video_format.setStreamFrameRate(20)
@@ -1588,6 +1896,8 @@ class VideoRecording(QObject):
         self.timer.timeout.connect(self.pump)
 
     def set_audio(self, kind, enabled):
+        if self.active and not self.stopping and not self._pumping_audio:
+            self.pump_audio(self.elapsed())
         self.audio_enabled[kind] = enabled
         self.retired_sources = [source for source in self.retired_sources
                                 if getattr(source, "thread", None) and source.thread.is_alive()]
@@ -1597,7 +1907,8 @@ class VideoRecording(QObject):
             self.retired_sources.append(previous)
         # Discard queued PCM on any mute change, so muted samples cannot leak later.
         self.pending_audio = None
-        if enabled and self.active and not self.stopping and not self.done:
+        if enabled and self.active and not self.paused and not self.stopping and not self.done:
+            self.audio_start_frames[kind] = round(self.elapsed()*50)*960
             self.sources[kind] = AudioSource(kind)
 
     def start(self):
@@ -1631,17 +1942,36 @@ class VideoRecording(QObject):
         self.stop()
 
     def elapsed(self):
-        return max(0, time.monotonic() - self.start_time) if self.active else 0
+        if not self.active:
+            return 0
+        now = self.pause_time if self.paused else time.monotonic()
+        return max(0, now - getattr(self, "start_time", now) - self.paused_seconds)
 
-    def pump(self):
-        from PySide6.QtMultimedia import QAudioBuffer, QVideoFrame
-        if not self.active or self.stopping:
+    def set_paused(self, paused):
+        if not self.active or self.stopping or self.done or self.paused == paused:
             return
+        if paused:
+            self.pause_time = time.monotonic()
+            self.paused = True
+            self.pump_audio(self.elapsed())
+            # Release the actual inputs while paused; keep queued pre-pause samples
+            # until the encoder accepts the end of the active segment.
+            for source in self.sources.values():
+                source.close()
+        else:
+            self.pump_audio(self.elapsed())
+            self.paused_seconds += time.monotonic() - self.pause_time
+            self.paused = False
+            for kind, enabled in list(self.audio_enabled.items()):
+                self.set_audio(kind, enabled)
+        self.paused_changed.emit(self.paused)
+
+    def pump_audio(self, target):
+        from PySide6.QtMultimedia import QAudioBuffer
+        self._pumping_audio = True
         try:
-            elapsed = self.elapsed()
-            # Keep audio continuous, including silence, to allow toggles mid-recording.
-            for _ in range(10):
-                if self.audio_frames / 48000 >= elapsed:
+            for _ in range(25):
+                if self.audio_frames / 48000 >= target:
                     break
                 if self.pending_audio is None:
                     blocks = []
@@ -1649,6 +1979,8 @@ class VideoRecording(QObject):
                         if source.error:
                             self.set_audio(kind, False)
                             self.audio_failed.emit(kind, source.error)
+                            continue
+                        if self.audio_frames < self.audio_start_frames.get(kind, 0):
                             continue
                         try:
                             blocks.append(source.blocks.get_nowait())
@@ -1660,6 +1992,27 @@ class VideoRecording(QObject):
                     break
                 self.pending_audio = None
                 self.audio_frames += 960
+        finally:
+            self._pumping_audio = False
+
+    def pump(self):
+        from PySide6.QtMultimedia import QVideoFrame
+        if not self.active or self.done:
+            return
+        try:
+            if self.stopping:
+                self.pump_audio(self.stop_elapsed)
+                if self.audio_frames/48000 >= self.stop_elapsed or time.monotonic() >= self.stop_deadline:
+                    if self.audio_frames/48000 < self.stop_elapsed and not self.error:
+                        self.error = "Audio encoder did not finish pending samples"
+                    self.finish_stop()
+                return
+            elapsed = self.elapsed()
+            # Audio is submitted 150 ms behind the live clock to absorb WASAPI
+            # scheduling jitter. Its timestamps remain unchanged, preserving A/V sync.
+            self.pump_audio(elapsed if self.paused else max(0, elapsed-.15))
+            if self.paused:
+                return
             if elapsed >= self.next_video:
                 image = self.grabber.frame(self.cursor)
                 if image.size() != self.size:
@@ -1678,16 +2031,28 @@ class VideoRecording(QObject):
             if elapsed - self.audio_frames / 48000 > 3:
                 raise RuntimeError("Encoder cannot keep up with the selected area")
         except Exception as error:
-            self.recorder_error(None, str(error))
+            if self.stopping:
+                self.error = str(error)
+                self.finish_stop()
+            else:
+                self.recorder_error(None, str(error))
 
     def stop(self):
         if self.done or self.stopping:
             return
         self.stopping = True
-        self.timer.stop()
+        self.stop_elapsed = self.elapsed()
+        self.stop_deadline = time.monotonic()+1.5
         for source in self.sources.values():
             source.close()
         self.grabber.close()
+        if self.active:
+            self.pump()
+        else:
+            self.finish_stop()
+
+    def finish_stop(self):
+        self.timer.stop()
         self.recorder.stop()
         from PySide6.QtMultimedia import QMediaRecorder
         if self.recorder.recorderState() == QMediaRecorder.RecorderState.StoppedState:
@@ -1771,6 +2136,65 @@ def place_recording_bar(widget, region):
                 raise OSError("Cannot position recording controls")
 
 
+STRINGS["ro"].update(record_pause="Pauză", record_resume="Continuă", record_paused="Înregistrare în pauză",
+                    record_pause_tip="Pune filmarea pe pauză. Imaginea și sunetul din pauză nu se salvează.",
+                    record_resume_tip="Continuă în același videoclip, fără durata pauzei.")
+STRINGS["ru"].update(record_pause="Пауза", record_resume="Продолжить", record_paused="Запись приостановлена",
+                    record_pause_tip="Приостановить запись. Изображение и звук во время паузы не сохраняются.",
+                    record_resume_tip="Продолжить тот же ролик, исключив длительность паузы.")
+STRINGS["en"].update(record_pause="Pause", record_resume="Resume", record_paused="Recording paused",
+                    record_pause_tip="Pause recording. Video and audio during the pause are not saved.",
+                    record_resume_tip="Continue in the same video, without the paused time.")
+
+
+class RecordingBoundary:
+    """Four click-through strips mark native pixels without covering the workspace."""
+    def __init__(self, rect):
+        self.region = QRect(rect)
+        self.strips = []
+        for _ in range(4):
+            strip = QWidget(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint |
+                            Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.WindowTransparentForInput |
+                            Qt.WindowType.WindowDoesNotAcceptFocus)
+            strip.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+            strip.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
+            strip.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            strip.setObjectName("recordBoundary")
+            self.strips.append(strip)
+        self.set_paused(False)
+
+    def rectangles(self, outside=False):
+        r, d = self.region, 3
+        x, y, w, h = r.getRect()
+        if outside:
+            return [QRect(x-d, y-d, w+2*d, d), QRect(x-d, y+h, w+2*d, d),
+                    QRect(x-d, y, d, h), QRect(x+w, y, d, h)]
+        return [QRect(x, y, w, min(d, h)), QRect(x, y+h-min(d, h), w, min(d, h)),
+                QRect(x, y, min(d, w), h), QRect(x+w-min(d, w), y, min(d, w), h)]
+
+    def show(self):
+        for strip, inside, outside in zip(self.strips, self.rectangles(), self.rectangles(True)):
+            strip.setGeometry(inside)
+            strip.show()
+            # If Windows cannot exclude a strip, keep every pixel outside the crop.
+            target = inside if exclude_from_capture(strip) else outside
+            if sys.platform == "win32" and QApplication.platformName() != "offscreen":
+                place_desktop_overlay(strip, target)
+            else:
+                strip.setGeometry(target)
+
+    def set_paused(self, paused):
+        color = "#d79b2e" if paused else "#eb5b5b"
+        for strip in self.strips:
+            strip.setStyleSheet(f"QWidget#recordBoundary {{ background: {color}; }}")
+
+    def close(self):
+        for strip in self.strips:
+            strip.close()
+            strip.deleteLater()
+        self.strips.clear()
+
+
 class RecordingControls(QWidget):
     start_requested = Signal()
     cancel_requested = Signal()
@@ -1781,6 +2205,7 @@ class RecordingControls(QWidget):
         self.owner, self.recording = owner, None
         self.region = QRect(rect) if rect is not None else None
         self.closing = self.preparing = self.capture_excluded = False
+        self.boundary = None
         self.setObjectName("recordBar")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowTitle("LumaShot — " + owner.t("record"))
@@ -1814,6 +2239,14 @@ class RecordingControls(QWidget):
         self.duration.setFont(QFont("Consolas", 10))
         self.duration.setToolTip(owner.t("record_duration"))
         row.addWidget(self.duration)
+        self.pause_button = QPushButton()
+        self.pause_button.setFixedSize(32, 32)
+        self.pause_button.setIcon(ui_icon("pause", self.foreground))
+        self.pause_button.setAccessibleName(owner.t("record_pause"))
+        self.pause_button.setToolTip(wrapped_tip(owner.t("record_pause_tip")))
+        self.pause_button.setEnabled(False)
+        self.pause_button.clicked.connect(self.toggle_pause)
+        row.addWidget(self.pause_button)
         self.checks = {}
         for key in ("microphone", "system_audio"):
             button = QPushButton()
@@ -1904,6 +2337,7 @@ class RecordingControls(QWidget):
         self.recording = recording
         recording.audio_failed.connect(self.audio_failed)
         recording.started.connect(self.on_started)
+        recording.paused_changed.connect(self.on_paused)
         self.start_button.setText(self.owner.t("bar_stop"))
         self.start_button.setIcon(ui_icon("rect", "#ffffff"))
         self.start_button.setToolTip(self.owner.t("record_stop"))
@@ -1916,8 +2350,27 @@ class RecordingControls(QWidget):
         self.preparing = False
         self.start_button.setEnabled(True)
         self.close_button.setEnabled(True)
+        self.pause_button.setEnabled(True)
+        if self.region is not None and self.boundary is None:
+            self.boundary = RecordingBoundary(self.region)
+            self.boundary.show()
+            self.raise_()
         for button in self.checks.values():
             button.setEnabled(True)
+        self.refresh()
+
+    def toggle_pause(self):
+        if self.recording is not None:
+            self.recording.set_paused(not self.recording.paused)
+
+    def on_paused(self, paused):
+        action = "record_resume" if paused else "record_pause"
+        self.pause_button.setIcon(ui_icon("resume" if paused else "pause", self.foreground))
+        self.pause_button.setAccessibleName(self.owner.t(action))
+        self.pause_button.setToolTip(wrapped_tip(self.owner.t(action + "_tip")))
+        self.duration.setToolTip(self.owner.t("record_paused" if paused else "record_duration"))
+        if self.boundary:
+            self.boundary.set_paused(paused)
         self.refresh()
 
     def update_audio_button(self, kind):
@@ -1951,6 +2404,7 @@ class RecordingControls(QWidget):
         self.start_button.setEnabled(False)
         self.start_button.setToolTip(self.owner.t("record_saving"))
         self.close_button.setEnabled(False)
+        self.pause_button.setEnabled(False)
         for button in self.checks.values():
             button.setEnabled(False)
         self.recording.stop()
@@ -1963,6 +2417,9 @@ class RecordingControls(QWidget):
 
     def dispose(self):
         self.closing = True
+        if self.boundary:
+            self.boundary.close()
+            self.boundary = None
         self.timer.stop()
         QApplication.instance().removeEventFilter(self)
         self.close()
@@ -1976,6 +2433,332 @@ class RecordingControls(QWidget):
             event.ignore()
             self.request_close()
 
+
+
+from PySide6.QtWidgets import QDialog
+import tempfile
+import shutil
+import subprocess
+
+
+NEW_COPY = {
+    "ro": {
+        "startup": "Pornește odată cu Windows", "tip_startup": "Pornește LumaShot în tray la conectarea în Windows. Poți dezactiva oricând această opțiune.",
+        "record_stop": "Oprește și previzualizează", "video_note": "MP4 · 20 cadre/s. Selectează zona și apasă Start. După Stop, revezi filmarea și alegi dacă și unde o salvezi.",
+        "startup_error": "Pornirea cu Windows nu a putut fi modificată. {detail}",
+        "review": "Previzualizare video", "review_note": "Revezi filmarea, apoi alege dacă și unde o păstrezi.",
+        "video_save": "Salvează…", "video_default": "În dosarul implicit", "video_custom": "Alege locația…",
+        "video_discard": "Renunță la filmare", "video_keep": "Înapoi la video", "video_unsaved": "Filmarea nu este salvată. Ce dorești să faci?",
+        "video_play": "Redă", "video_pause_playback": "Pauză redare", "video_seek": "Poziție în videoclip", "video_mute": "Oprește sunetul previzualizării", "video_unmute": "Pornește sunetul previzualizării",
+        "video_save_title": "Salvează filmarea", "video_saving": "Se salvează… {percent}%", "video_save_error": "Nu s-a putut salva filmarea. Originalul este păstrat pentru a încerca din nou. {detail}",
+        "video_preview_error": "Previzualizarea nu este disponibilă: {detail}. Poți salva în continuare fișierul.",
+        "object_hint": "Ține Shift pentru a selecta, muta sau redimensiona desenele. Shift + dublu clic pe text pentru a-l rescrie.",
+    },
+    "ru": {
+        "startup": "Запускать вместе с Windows", "tip_startup": "Запускать LumaShot в трее при входе в Windows. Эту опцию можно отключить в любое время.",
+        "record_stop": "Остановить и просмотреть", "video_note": "MP4 · 20 кадров/с. Выделите область и нажмите Старт. После остановки просмотрите запись и выберите, сохранять ли её и куда.",
+        "startup_error": "Не удалось изменить автозапуск. {detail}",
+        "review": "Просмотр видео", "review_note": "Просмотрите запись и выберите, сохранять ли её и в какую папку.",
+        "video_save": "Сохранить…", "video_default": "В папку по умолчанию", "video_custom": "Выбрать расположение…",
+        "video_discard": "Удалить черновик", "video_keep": "Вернуться к видео", "video_unsaved": "Запись не сохранена. Что вы хотите сделать?",
+        "video_play": "Воспроизвести", "video_pause_playback": "Пауза просмотра", "video_seek": "Позиция в видео", "video_mute": "Выключить звук просмотра", "video_unmute": "Включить звук просмотра",
+        "video_save_title": "Сохранить запись", "video_saving": "Сохранение… {percent}%", "video_save_error": "Не удалось сохранить запись. Оригинал сохранён для повторной попытки. {detail}",
+        "video_preview_error": "Просмотр недоступен: {detail}. Файл по-прежнему можно сохранить.",
+        "object_hint": "Удерживайте Shift, чтобы выбирать, перемещать и менять размер пометок. Shift + двойной щелчок по тексту — изменить текст.",
+    },
+    "en": {
+        "startup": "Start with Windows", "tip_startup": "Start LumaShot in the tray when you sign in to Windows. You can turn this off at any time.",
+        "record_stop": "Stop and review", "video_note": "MP4 · 20 fps. Select an area and click Start. After Stop, review the recording and choose whether and where to save it.",
+        "startup_error": "Could not change startup with Windows. {detail}",
+        "review": "Video preview", "review_note": "Review your recording, then choose whether and where to keep it.",
+        "video_save": "Save…", "video_default": "Default folder", "video_custom": "Choose location…",
+        "video_discard": "Discard recording", "video_keep": "Back to video", "video_unsaved": "This recording has not been saved. What would you like to do?",
+        "video_play": "Play", "video_pause_playback": "Pause playback", "video_seek": "Video position", "video_mute": "Mute preview audio", "video_unmute": "Unmute preview audio",
+        "video_save_title": "Save recording", "video_saving": "Saving… {percent}%", "video_save_error": "Could not save the recording. The original is kept so you can try again. {detail}",
+        "video_preview_error": "Preview is unavailable: {detail}. You can still save the file.",
+        "object_hint": "Hold Shift to select, move or resize annotations. Shift + double-click text to rewrite it.",
+    },
+}
+for _language, _copy in NEW_COPY.items():
+    STRINGS[_language].update(_copy)
+
+
+class WindowsStartup:
+    KEY = "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+
+    def registry(self):
+        return QSettings(self.KEY, QSettings.Format.NativeFormat)
+
+    def command(self):
+        if getattr(sys, "frozen", False):
+            parts = [str(Path(sys.executable).resolve()), "--tray"]
+        else:
+            executable = Path(sys.executable).resolve()
+            windowed = executable.with_name("pythonw.exe")
+            parts = [str(windowed if windowed.exists() else executable), str(Path(__file__).resolve()), "--tray"]
+        return subprocess.list2cmdline(parts)
+
+    def enabled(self):
+        return sys.platform == "win32" and bool(self.registry().value("LumaShot", ""))
+
+    def set_enabled(self, enabled):
+        if sys.platform != "win32":
+            raise OSError("Windows startup is only available on Windows")
+        registry = self.registry()
+        if enabled:
+            registry.setValue("LumaShot", self.command())
+        else:
+            registry.remove("LumaShot")
+        registry.sync()
+        if registry.status() != QSettings.Status.NoError:
+            raise OSError(str(registry.status()))
+
+
+class VideoDraft:
+    def __init__(self):
+        self.directory = tempfile.TemporaryDirectory(prefix="LumaShot-recording-")
+        self.root = Path(self.directory.name).resolve()
+        self.path = self.root / ("LumaShot_"+datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")+".mp4")
+
+    def cleanup(self, attempts=0):
+        # Only our freshly created draft directory may be recursively removed.
+        if self.root.parent != Path(tempfile.gettempdir()).resolve() or not self.root.name.startswith("LumaShot-recording-"):
+            raise OSError("Unexpected draft directory")
+        try:
+            self.directory.cleanup()
+        except PermissionError:
+            if attempts < 10:
+                QTimer.singleShot(200, lambda: self.cleanup(attempts+1))
+
+
+def save_video_draft(source, target, overwrite=False, progress=None):
+    source, target = Path(source), Path(target)
+    if target.resolve().is_relative_to(source.parent.resolve()):
+        raise OSError("Choose a destination outside the temporary recording folder")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists() and not overwrite:
+        raise FileExistsError(str(target))
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix=".LumaShot-save-", suffix=".tmp", dir=target.parent, delete=False) as output:
+            temporary = Path(output.name)
+            size, copied = source.stat().st_size, 0
+            with source.open("rb") as video:
+                while block := video.read(1024*1024):
+                    output.write(block)
+                    copied += len(block)
+                    if progress:
+                        progress(round(copied*100/max(1, size)))
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, target)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
+
+
+class VideoReview(QDialog):
+    saved = Signal(str)
+    copy_done = Signal(str, str)
+    copy_progress = Signal(int)
+
+    def __init__(self, draft, folder, language, parent=None):
+        super().__init__(parent)
+        from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput, QVideoSink
+        from PySide6.QtWidgets import QSizePolicy
+        self.draft, self.folder, self.lang = draft, Path(folder), language
+        self.saved_path = None
+        self.saving = self.allow_close = False
+        self.setWindowTitle(self.t("review"))
+        self.setWindowIcon(app_icon())
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.resize(840, 580)
+        self.setMinimumSize(600, 430)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        title = QLabel(self.t("review_note"))
+        title.setWordWrap(True)
+        layout.addWidget(title)
+        self.video = QLabel()
+        self.video.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.video.setStyleSheet("background: #101618; border-radius: 8px;")
+        self.video.setMinimumSize(320, 240)
+        self.video.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
+        self.video_image = QImage()
+        layout.addWidget(self.video, 1)
+        self.player = QMediaPlayer(self)
+        self.audio = QAudioOutput(self)
+        self.audio.setVolume(1)
+        self.player.setAudioOutput(self.audio)
+        self.video_sink = QVideoSink(self)
+        self.video_sink.videoFrameChanged.connect(self.present_frame)
+        self.player.setVideoSink(self.video_sink)
+        controls = QHBoxLayout()
+        self.play_button = QPushButton(self.t("video_play"))
+        self.play_button.clicked.connect(self.toggle_playback)
+        controls.addWidget(self.play_button)
+        self.seek = QSlider(Qt.Orientation.Horizontal)
+        self.seek.setAccessibleName(self.t("video_seek"))
+        self.seek.setToolTip(self.t("video_seek"))
+        self.seek.sliderMoved.connect(self.player.setPosition)
+        controls.addWidget(self.seek, 1)
+        self.time_label = QLabel("00:00 / 00:00")
+        controls.addWidget(self.time_label)
+        self.mute = QPushButton()
+        self.foreground = QApplication.palette().color(QPalette.ColorRole.WindowText).name()
+        self.mute.setCheckable(True)
+        self.mute.setIcon(ui_icon("volume-2", self.foreground))
+        self.mute.setToolTip(self.t("video_mute"))
+        self.mute.setAccessibleName(self.t("video_mute"))
+        self.mute.toggled.connect(self.change_mute)
+        controls.addWidget(self.mute)
+        layout.addLayout(controls)
+        self.status = QLabel()
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        actions = QHBoxLayout()
+        self.discard_button = QPushButton(self.t("video_discard"))
+        self.discard_button.clicked.connect(self.discard)
+        actions.addWidget(self.discard_button)
+        actions.addStretch()
+        self.save_button = QPushButton(self.t("video_save"))
+        self.save_button.setObjectName("primary")
+        menu = QMenu(self.save_button)
+        default = menu.addAction(self.t("video_default"))
+        default.setToolTip(wrapped_tip(str(self.folder)))
+        default.triggered.connect(self.save_default)
+        custom = menu.addAction(self.t("video_custom"))
+        custom.triggered.connect(self.save_custom)
+        menu.setToolTipsVisible(True)
+        self.save_button.setMenu(menu)
+        actions.addWidget(self.save_button)
+        layout.addLayout(actions)
+        self.player.durationChanged.connect(self.duration_changed)
+        self.player.positionChanged.connect(self.position_changed)
+        self.player.playbackStateChanged.connect(self.playback_changed)
+        self.player.errorOccurred.connect(lambda code, detail: self.status.setText(self.t("video_preview_error", detail=detail)))
+        self.copy_done.connect(self.saved_result)
+        self.copy_progress.connect(lambda percent: self.status.setText(self.t("video_saving", percent=percent)))
+        self.player.setSource(QUrl.fromLocalFile(str(draft.path)))
+
+    def t(self, key, **values):
+        return tr(self.lang, key, **values)
+
+    def present_frame(self, frame):
+        if frame.isValid():
+            self.video_image = frame.toImage()
+            self.update_video_image()
+
+    def update_video_image(self):
+        if not self.video_image.isNull():
+            self.video.setPixmap(QPixmap.fromImage(self.video_image).scaled(
+                self.video.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "video_image"):
+            self.update_video_image()
+
+    @staticmethod
+    def clock(milliseconds):
+        seconds = milliseconds//1000
+        return f"{seconds//3600:02}:{seconds//60%60:02}:{seconds%60:02}" if seconds >= 3600 else f"{seconds//60:02}:{seconds%60:02}"
+
+    def duration_changed(self, duration):
+        self.seek.setRange(0, max(0, duration))
+        self.position_changed(self.player.position())
+
+    def position_changed(self, position):
+        if not self.seek.isSliderDown():
+            self.seek.setValue(position)
+        self.time_label.setText(self.clock(position)+" / "+self.clock(self.player.duration()))
+
+    def playback_changed(self, state):
+        from PySide6.QtMultimedia import QMediaPlayer
+        self.play_button.setText(self.t("video_pause_playback" if state == QMediaPlayer.PlaybackState.PlayingState else "video_play"))
+
+    def toggle_playback(self):
+        from PySide6.QtMultimedia import QMediaPlayer
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
+        else:
+            if self.player.position() >= self.player.duration():
+                self.player.setPosition(0)
+            self.player.play()
+
+    def release_player(self):
+        self.player.stop()
+        self.player.setSource(QUrl())
+
+    def change_mute(self, muted):
+        self.audio.setMuted(muted)
+        self.mute.setIcon(ui_icon("volume-x" if muted else "volume-2", self.foreground))
+        self.mute.setToolTip(self.t("video_unmute" if muted else "video_mute"))
+        self.mute.setAccessibleName(self.mute.toolTip())
+
+    def save_default(self):
+        self.save_to(self.folder/self.draft.path.name)
+
+    def save_custom(self):
+        path, _ = QFileDialog.getSaveFileName(self, self.t("video_save_title"), str(self.folder/self.draft.path.name), "MP4 (*.mp4)")
+        if path:
+            target = Path(path)
+            if not target.suffix:
+                target = target.with_suffix(".mp4")
+            self.save_to(target, overwrite=True)
+
+    def save_to(self, target, overwrite=False):
+        if self.saving or self.allow_close:
+            return
+        self.saving = True
+        self.release_player()
+        for button in (self.save_button, self.discard_button, self.play_button, self.mute, self.seek):
+            button.setEnabled(False)
+        self.status.setText(self.t("video_saving", percent=0))
+        def copy():
+            try:
+                save_video_draft(self.draft.path, target, overwrite, self.copy_progress.emit)
+                self.copy_done.emit(str(target), "")
+            except Exception as error:
+                self.copy_done.emit("", str(error))
+        threading.Thread(target=copy, name="LumaShot-save-video", daemon=True).start()
+
+    def saved_result(self, path, error):
+        self.saving = False
+        if error:
+            for button in (self.save_button, self.discard_button, self.play_button, self.mute, self.seek):
+                button.setEnabled(True)
+            self.status.setText(self.t("video_save_error", detail=error))
+            self.player.setSource(QUrl.fromLocalFile(str(self.draft.path)))
+            return
+        self.saved_path = path
+        self.allow_close = True
+        self.saved.emit(path)
+        self.accept()
+
+    def discard(self):
+        if self.saving:
+            return
+        self.release_player()
+        self.allow_close = True
+        super().reject()
+
+    def reject(self):
+        if self.allow_close:
+            super().reject()
+        elif not self.saving:
+            question = QMessageBox(self)
+            question.setWindowTitle(self.t("review"))
+            question.setText(self.t("video_unsaved"))
+            save = question.addButton(self.t("video_save"), QMessageBox.ButtonRole.AcceptRole)
+            discard = question.addButton(self.t("video_discard"), QMessageBox.ButtonRole.DestructiveRole)
+            cancel = question.addButton(self.t("video_keep"), QMessageBox.ButtonRole.RejectRole)
+            question.setDefaultButton(cancel)
+            question.exec()
+            if question.clickedButton() is discard:
+                self.discard()
+            elif question.clickedButton() is save:
+                self.save_button.showMenu()
 
 
 class MainWindow(QMainWindow):
@@ -1998,6 +2781,9 @@ class MainWindow(QMainWindow):
         self.quitting = False
         self.recording = None
         self.record_controls = None
+        self.recording_draft = None
+        self.review_dialog = None
+        self.startup = WindowsStartup()
         self.quit_after_recording = False
         self.setWindowTitle("LumaShot")
         self.setWindowIcon(app_icon())
@@ -2111,6 +2897,12 @@ class MainWindow(QMainWindow):
         self.theme_combo.currentIndexChanged.connect(
             lambda index: self.change_theme(self.theme_combo.itemData(index)))
         form.addRow(self.t("theme"), self.theme_combo)
+        self.startup_check = ContrastCheckBox(self.t("startup"))
+        self.startup_check.setToolTip(wrapped_tip(self.t("tip_startup")))
+        self.startup_check.setChecked(self.startup.enabled())
+        self.startup_check.setEnabled(sys.platform == "win32")
+        self.startup_check.toggled.connect(self.change_startup)
+        form.addRow(self.startup_check)
         for key, default in (("notifications", True), ("remember_area", False), ("include_cursor", False)):
             checkbox = ContrastCheckBox(self.t(key))
             checkbox.setToolTip(wrapped_tip(self.t("tip_" + key)))
@@ -2244,6 +3036,16 @@ class MainWindow(QMainWindow):
     def option(self, key, default=False):
         return self.settings.value(key, default, type=bool)
 
+    def change_startup(self, enabled):
+        try:
+            self.startup.set_enabled(enabled)
+            self.settings.setValue("start_windows", enabled)
+        except OSError as error:
+            self.startup_check.blockSignals(True)
+            self.startup_check.setChecked(self.startup.enabled())
+            self.startup_check.blockSignals(False)
+            QMessageBox.warning(self, self.t("error"), self.t("startup_error", detail=str(error)))
+
     def save_format(self):
         return "JPEG" if self.settings.value("save_format", "PNG") == "JPEG" else "PNG"
 
@@ -2261,6 +3063,7 @@ class MainWindow(QMainWindow):
     def change_full_action(self, value):
         self.settings.setValue("full_action", value)
         self.refresh_shortcuts()
+        QTimer.singleShot(0, self.rebuild_tray)
 
     def change_theme(self, theme):
         if theme == self.theme or theme not in ("light", "dark"):
@@ -2304,11 +3107,18 @@ class MainWindow(QMainWindow):
         old_menu = self.tray.contextMenu()
         menu = QMenu(self)
         menu.setToolTipsVisible(True)
-        for key, callback in [("record_stop", self.stop_recording) if self.recording else
-                              ("capture", lambda: self.start_capture()),
+        for key, callback in [("capture", lambda: self.start_capture()),
+                              ("full_capture", lambda: self.start_capture("full")),
+                              ("record_stop", self.stop_recording) if self.recording else
+                              ("record", lambda: self.record_controls.primary_action() if self.record_controls else self.start_capture("record")),
                               ("open", self.show_main), ("quit", self.quit_app)]:
-            action = QAction(ui_icon("cancel" if key == "record_stop" else key, self.icon_color), self.t(key), menu)
-            action.setToolTip(wrapped_tip(self.t("tip_area") if key == "capture" else self.t(key)))
+            icon = {"full_capture": "monitor", "record": "video", "record_stop": "cancel"}.get(key, key)
+            tip = {"capture": "tip_area", "record": "record_tip",
+                   "full_capture": "tip_full_save" if self.settings.value("full_action") == "save" else "tip_full_edit"}.get(key, key)
+            action = QAction(ui_icon(icon, self.icon_color), self.t(key), menu)
+            action.setToolTip(wrapped_tip(self.t(tip)))
+            if key in ("capture", "full_capture"):
+                action.setEnabled(self.recording is None)
             action.triggered.connect(callback)
             menu.addAction(action)
         self.tray.setContextMenu(menu)
@@ -2366,6 +3176,11 @@ class MainWindow(QMainWindow):
             self.folder_label.setToolTip(folder)
 
     def show_main(self):
+        if self.review_dialog is not None:
+            self.review_dialog.show()
+            self.review_dialog.raise_()
+            self.review_dialog.activateWindow()
+            return
         if self.recording and self.record_controls:
             self.record_controls.show()
             self.record_controls.raise_()
@@ -2381,6 +3196,9 @@ class MainWindow(QMainWindow):
             self.start_capture()
 
     def start_capture(self, mode="region"):
+        if self.review_dialog is not None:
+            self.show_main()
+            return
         if self.recording:
             self.show_main()
             return
@@ -2521,8 +3339,8 @@ class MainWindow(QMainWindow):
             # Load optional audio dependencies before starting an output file.
             import numpy
             import soundcard
-            Path(self.folder).mkdir(parents=True, exist_ok=True)
-            path = Path(self.folder) / ("LumaShot_" + datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f") + ".mp4")
+            self.recording_draft = VideoDraft()
+            path = self.recording_draft.path
             recording = VideoRecording(rect, path, self.option("include_cursor"), self)
             self.recording = recording
             recording.finished.connect(self.recording_finished)
@@ -2543,6 +3361,9 @@ class MainWindow(QMainWindow):
                 recording.stop()
             else:
                 self.recording = None
+                if self.recording_draft:
+                    self.recording_draft.cleanup()
+                    self.recording_draft = None
                 self.dismiss_recording_bar()
                 self.show_main()
                 QMessageBox.warning(self, self.t("error"), self.t("record_error", detail=str(error)))
@@ -2560,9 +3381,33 @@ class MainWindow(QMainWindow):
         self.rebuild_ui()
         self.rebuild_tray()
         if error:
+            if self.recording_draft:
+                self.recording_draft.cleanup()
+                self.recording_draft = None
             QMessageBox.warning(self, self.t("error"), self.t("record_error", detail=error))
         else:
-            self.notify_result(self.t("record_saved", path=path))
+            draft = self.recording_draft
+            if draft is not None:
+                dialog = VideoReview(draft, self.folder, self.lang, self)
+                self.review_dialog = dialog
+                dialog.saved.connect(lambda saved: self.notify_result(self.t("record_saved", path=saved)))
+                dialog.finished.connect(lambda result, view=dialog, video=draft: self.review_finished(view, video))
+                dialog.show()
+                dialog.raise_()
+                dialog.player.play()
+                return
+        if self.quit_after_recording:
+            self.quit_app()
+        elif self.restore_window:
+            self.show_main()
+
+    def review_finished(self, dialog, draft):
+        dialog.release_player()
+        dialog.deleteLater()
+        if self.review_dialog is dialog:
+            self.review_dialog = None
+            self.recording_draft = None
+        draft.cleanup()
         if self.quit_after_recording:
             self.quit_app()
         elif self.restore_window:
@@ -2680,6 +3525,13 @@ class MainWindow(QMainWindow):
             self.quit_app()
 
     def quit_app(self):
+        if self.review_dialog is not None:
+            dialog = self.review_dialog
+            self.quit_after_recording = True
+            dialog.reject()
+            if self.review_dialog is not None and not dialog.saving and not dialog.allow_close:
+                self.quit_after_recording = False
+            return
         if self.recording:
             self.quit_after_recording = True
             self.stop_recording()
@@ -2705,7 +3557,7 @@ def main():
     socket = QLocalSocket()
     socket.connectToServer("LumaShot.Personal.v1")
     if socket.waitForConnected(250):
-        socket.write(b"show")
+        socket.write(b"tray" if "--tray" in sys.argv else b"show")
         socket.waitForBytesWritten(250)
         socket.disconnectFromServer()
         return 0
@@ -2717,16 +3569,106 @@ def main():
     def connected():
         connection = server.nextPendingConnection()
         if connection:
-            connection.disconnectFromServer()
-            connection.deleteLater()
-        window.show_main()
+            def request():
+                if bytes(connection.readAll()) == b"show":
+                    window.show_main()
+                connection.disconnectFromServer()
+                connection.deleteLater()
+            connection.readyRead.connect(request)
+            if connection.bytesAvailable():
+                request()
     server.newConnection.connect(connected)
     app.aboutToQuit.connect(window.hotkeys.close)
     app.aboutToQuit.connect(window.full_hotkeys.close)
     app.aboutToQuit.connect(window.record_hotkeys.close)
-    window.show()
+    if "--tray" not in sys.argv or not window.tray.isVisible():
+        window.show()
     return app.exec()
 
 
+def check_installation(report_path):
+    """Optional packaging check using synthetic pixels; no screen/audio capture."""
+    import tempfile
+    import traceback
+    result = {"ok": False}
+    try:
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+        application = QApplication.instance() or QApplication([])
+        from PySide6.QtMultimedia import QMediaPlayer, QVideoSink
+        import soundcard
+        import numpy
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "synthetic.mp4"
+            class SyntheticGrab:
+                def __init__(self, rect):
+                    self.size = rect.size()
+                def frame(self, cursor=False):
+                    image = QImage(self.size, QImage.Format.Format_RGB32)
+                    image.fill(QColor("#118769"))
+                    return image
+                def close(self):
+                    pass
+            recording = VideoRecording(QRect(0, 0, 321, 241), path, grab_factory=SyntheticGrab)
+            completed = []
+            recording.finished.connect(lambda saved, error: completed.append(error))
+            recording.start()
+            QTimer.singleShot(1200, recording.stop)
+            deadline = time.monotonic()+15
+            while not completed and time.monotonic() < deadline:
+                application.processEvents()
+                time.sleep(.005)
+            if not completed or completed[0]:
+                raise RuntimeError(str(completed) or "Encoder timeout")
+            player, sink, frames = QMediaPlayer(), QVideoSink(), []
+            player.setVideoSink(sink)
+            sink.videoFrameChanged.connect(lambda frame: frames.append(frame.toImage()) if frame.isValid() else None)
+            player.setSource(QUrl.fromLocalFile(str(path)))
+            player.play()
+            deadline = time.monotonic()+10
+            while not frames and time.monotonic() < deadline:
+                application.processEvents()
+                time.sleep(.005)
+            player.stop()
+            player.setSource(QUrl())
+            if not frames or frames[0].size() != QSize(322, 242):
+                raise RuntimeError("Bundled video decoder failed: " + player.errorString())
+            draft = VideoDraft()
+            try:
+                shutil.copyfile(path, draft.path)
+                review = VideoReview(draft, folder, "en")
+                review.audio.setMuted(True)
+                review.player.play()
+                deadline = time.monotonic()+10
+                while review.video_image.isNull() and time.monotonic() < deadline:
+                    application.processEvents()
+                    time.sleep(.005)
+                if review.video_image.isNull():
+                    raise RuntimeError("Bundled preview did not display a video frame")
+                review.save_default()
+                deadline = time.monotonic()+10
+                while review.saved_path is None and review.saving and time.monotonic() < deadline:
+                    application.processEvents()
+                    time.sleep(.005)
+                if review.saved_path is None or Path(review.saved_path).read_bytes() != path.read_bytes():
+                    raise RuntimeError("Bundled preview save failed")
+                review.release_player()
+                review.allow_close = True
+                review.close()
+                review.deleteLater()
+                application.processEvents()
+            finally:
+                draft.cleanup()
+            result.update(ok=True, video_bytes=path.stat().st_size,
+                          decoded_size=[frames[0].width(), frames[0].height()],
+                          preview_and_save=True,
+                          numpy=numpy.__version__, frozen=bool(getattr(sys, "frozen", False)))
+    except Exception:
+        result["error"] = traceback.format_exc()
+    Path(report_path).write_text(json.dumps(result, indent=2), encoding="utf-8")
+    return 0 if result["ok"] else 1
+
+
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--check-installation":
+        sys.exit(check_installation(sys.argv[2]))
     sys.exit(main())

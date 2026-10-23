@@ -20,6 +20,36 @@ if APP.platformName() == "offscreen":
 
 
 class CaptureTests(unittest.TestCase):
+    def test_eight_handles_resize_edges_without_changing_other_axis(self):
+        from LumaShot import RecordingOverlay
+        for overlay_type in (CaptureOverlay, RecordingOverlay):
+            pix = QPixmap(APP.primaryScreen().size())
+            pix.fill(QColor("white"))
+            overlay = overlay_type(APP.primaryScreen(), pix, "ro")
+            overlay.show()
+            APP.processEvents()
+            cases = [("t", QPoint(280, 50), QRectF(100, 50, 300, 250)),
+                     ("b", QPoint(280, 350), QRectF(100, 100, 300, 250)),
+                     ("l", QPoint(50, 240), QRectF(50, 100, 350, 200)),
+                     ("r", QPoint(450, 240), QRectF(100, 100, 350, 200)),
+                     ("l", QPoint(450, 240), QRectF(400, 100, 50, 200)),
+                     ("t", QPoint(280, 350), QRectF(100, 300, 300, 50)),
+                     ("r", QPoint(overlay.width()+50, 240), QRectF(100, 100, overlay.width()-100, 200))]
+            for handle, end, expected in cases:
+                with self.subTest(overlay=overlay_type.__name__, handle=handle, end=end):
+                    overlay.selection = QRectF(100, 100, 300, 200)
+                    self.assertEqual(len(overlay.handles()), 8)
+                    start = overlay.handles()[handle].toPoint()
+                    QTest.mouseMove(overlay, start)
+                    expected_cursor = Qt.CursorShape.SizeVerCursor if handle in ("t", "b") else Qt.CursorShape.SizeHorCursor
+                    self.assertEqual(overlay.cursor().shape(), expected_cursor)
+                    QTest.mousePress(overlay, Qt.MouseButton.LeftButton, pos=start)
+                    self.assertEqual(overlay.drag_mode, handle)
+                    QTest.mouseMove(overlay, end)
+                    QTest.mouseRelease(overlay, Qt.MouseButton.LeftButton, pos=end)
+                    self.assertEqual(overlay.selection, expected)
+            overlay.close()
+
     def test_compact_rails_palette_and_removed_tools(self):
         pix = QPixmap(APP.primaryScreen().size())
         pix.fill(QColor("white"))
@@ -214,7 +244,7 @@ class ApplicationTests(unittest.TestCase):
             if os.environ.get("LUMASHOT_QA_DIR"):
                 self.window.grab().save(os.path.join(os.environ["LUMASHOT_QA_DIR"], f"ui-{language}.png"))
 
-    def test_tray_left_click_starts_area_and_right_menu_has_three_actions(self):
+    def test_tray_left_click_starts_area_and_right_menu_has_five_actions(self):
         from PySide6.QtWidgets import QSystemTrayIcon
         with patch.object(self.window, "start_capture") as capture:
             self.window.tray_activated(QSystemTrayIcon.ActivationReason.Trigger)
@@ -222,7 +252,40 @@ class ApplicationTests(unittest.TestCase):
             self.window.tray_activated(QSystemTrayIcon.ActivationReason.Context)
             self.window.tray_activated(QSystemTrayIcon.ActivationReason.DoubleClick)
             self.assertEqual(capture.call_count, 1)
-        self.assertEqual(len(self.window.tray.contextMenu().actions()), 3)
+        self.assertEqual(len(self.window.tray.contextMenu().actions()), 5)
+        for language in LANGUAGES:
+            self.window.change_language(language)
+            APP.processEvents()
+            with patch.object(self.window, "start_capture") as capture:
+                actions = self.window.tray.contextMenu().actions()
+                self.assertEqual([a.text() for a in actions], [STRINGS[language][k] for k in
+                                 ("capture", "full_capture", "record", "open", "quit")])
+                for action, mode in zip(actions[:3], (None, "full", "record")):
+                    self.assertFalse(action.icon().isNull())
+                    action.trigger()
+                    if mode is None:
+                        capture.assert_called_with()
+                    else:
+                        capture.assert_called_with(mode)
+        self.window.recording = object()
+        try:
+            with patch.object(self.window, "stop_recording") as stop:
+                self.window.rebuild_tray()
+                actions = self.window.tray.contextMenu().actions()
+                self.assertFalse(actions[0].isEnabled())
+                self.assertFalse(actions[1].isEnabled())
+                actions[2].trigger()
+                stop.assert_called_once_with()
+        finally:
+            self.window.recording = None
+
+    def test_frozen_settings_are_created_beside_executable(self):
+        from pathlib import Path
+        with patch("LumaShot.sys.frozen", True, create=True), \
+             patch("LumaShot.sys.executable", str(Path(self.temp.name)/"LumaShot.exe")):
+            settings = JsonSettings(migrate=False)
+            self.assertEqual(settings.path, Path(self.temp.name).resolve()/"LumaShot.settings.json")
+            self.assertTrue(settings.path.exists())
 
     def test_theme_persists_and_controls_keep_contrast_in_all_languages(self):
         for language in LANGUAGES:
