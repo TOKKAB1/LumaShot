@@ -8,6 +8,12 @@ Aplicație pentru Windows cu selecție pe mai multe monitoare, adnotări și în
 
 ![LumaShot în română](../assets/interface-ro.png)
 
+## Instalare pe Windows
+
+[**Descarcă pentru Windows**](https://github.com/TOKKAB1/LumaShot/releases/latest)
+
+Descarcă ZIP-ul cu installerul din ultima versiune, extrage-l și pornește **LumaShot-Setup-…-Windows-x64.exe**. Nu ai nevoie de Python. Installerul este disponibil în RO/RU/EN, instalează pentru utilizatorul curent și oferă o scurtătură opțională pe desktop.
+
 ## Pornire din Python
 
 Ai nevoie de **Windows 10 versiunea 2004+ sau Windows 11** și **Python 3.10+ pe 64 de biți**.
