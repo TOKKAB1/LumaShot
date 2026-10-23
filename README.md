@@ -20,7 +20,7 @@
 <p align="center">
   <a href="https://github.com/TOKKAB1/LumaShot/archive/refs/heads/main.zip">Download source ZIP</a> ·
   <a href="#run-from-python">Run from Python</a> ·
-  <a href="https://github.com/TOKKAB1/LumaShot/issues">Report an issue</a>
+  <a href="https://github.com/TOKKAB1/LumaShot/issues">Report an issue</a> · <a href="CHANGELOG.md">Changes</a>
 </p>
 
 ![LumaShot 5.0.0 in English, light theme](assets/interface-en.png)
@@ -123,6 +123,8 @@ beside Copy and Save. There is no extra OCR hotkey. A separate window lets you
 review or correct the result. Select part of the text and click **Copy text**,
 or leave it unselected to copy everything. Closing that window returns to the
 same capture, with its crop and annotations preserved.
+
+The OCR window opens above the capture overlay and receives keyboard focus immediately.
 
 ![OCR button on the capture toolbar](assets/ocr-toolbar.png)
 

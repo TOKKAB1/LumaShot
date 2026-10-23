@@ -84,6 +84,8 @@ verificarea și corectarea rezultatului. Selectează doar o parte și apasă
 **Copiază textul**, sau nu selecta nimic pentru copierea întregului text.
 Închiderea ferestrei te întoarce la aceeași captură și păstrează adnotările.
 
+Fereastra OCR se deschide deasupra capturii și primește imediat focusul tastaturii.
+
 ![Recunoaștere locală a textului](../assets/ocr-ro-light.png)
 
 Se recunosc pixelii originali ai zonei, fără bare sau desene adăugate. Procesarea

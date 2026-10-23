@@ -1139,6 +1139,9 @@ class CaptureOverlay(QWidget):
         self.ocr_dialog = OcrDialog(image, self.lang, self.theme, self)
         self.ocr_dialog.finished.connect(self.ocr_finished)
         self.ocr_dialog.open()
+        self.ocr_dialog.raise_()
+        self.ocr_dialog.activateWindow()
+        self.ocr_dialog.editor.setFocus()
 
     def ocr_finished(self, result):
         self.ocr_dialog = None
@@ -2985,7 +2988,12 @@ class OcrJob(QObject):
 
 class OcrDialog(QDialog):
     def __init__(self, image, language, theme="light", parent=None, backend=recognize_text):
-        super().__init__(parent)
+        flags = Qt.WindowType.Dialog
+        # A normal dialog can remain behind the always-on-top capture tool on
+        # Windows, even when it is modal. Keep both windows in the same band.
+        if parent is not None and parent.windowFlags() & Qt.WindowType.WindowStaysOnTopHint:
+            flags |= Qt.WindowType.WindowStaysOnTopHint
+        super().__init__(parent, flags)
         self.image, self.lang, self.backend = image.copy(), language, backend
         self.job = None
         self.setWindowTitle(self.t("ocr_title"))
