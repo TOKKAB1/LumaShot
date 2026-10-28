@@ -5,7 +5,7 @@
 <p align="center"><strong>A screenshot. Just how you need it.</strong></p>
 <p align="center">Select, annotate and record your screen.<br>A compact Windows app with a petrol-green interface, light and dark themes, and three languages.</p>
 <p align="center">
-  <img alt="Version v5" src="https://img.shields.io/badge/version-v5-118769">
+  <img alt="Version v5.0.1" src="https://img.shields.io/badge/version-v5.0.1-118769">
   <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4">
   <img alt="Python 3.10 or newer" src="https://img.shields.io/badge/Python-3.10%2B-3776AB">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-118769"></a>
@@ -23,7 +23,7 @@
   <a href="https://github.com/TOKKAB1/LumaShot/issues">Report an issue</a> · <a href="CHANGELOG.md">Changes</a>
 </p>
 
-![LumaShot 5.0.0 in English, light theme](assets/interface-en.png)
+![LumaShot 5.0.1 in English, light theme](assets/interface-en.png)
 
 ## What you can do
 
@@ -41,7 +41,7 @@ Captures and OCR stay local. LumaShot has **no account, cloud upload or telemetr
 
 Download the latest published Windows installer from [GitHub Releases](https://github.com/TOKKAB1/LumaShot/releases/latest).
 Extract the ZIP, if supplied, and run the installer. Python is not required.
-The v5 installer is named **LumaShot-Setup-5.0.0-Windows-x64.exe**.
+The v5 installer is named **LumaShot-Setup-5.0.1-Windows-x64.exe**.
 Setup offers RO/RU/EN, per-user installation and an optional desktop shortcut.
 
 ## Run from Python
@@ -71,6 +71,15 @@ python -m venv .venv
 
 </details>
 
+## Build a Windows EXE (optional)
+
+Double-click [BUILD_LUMASHOT.bat](BUILD_LUMASHOT.bat) beside the Python file, icon
+and requirements.txt. It creates an isolated `.lumashot-build` environment,
+installs the build dependencies and produces **LumaShot.exe in the same folder**.
+The executable's version follows APP_VERSION in the source. A 64-bit Python
+installation and internet for dependency downloads are required. Build output
+and personal settings are excluded by .gitignore; installers belong in Releases.
+
 ## Capture and annotate
 
 Click **Select an area**, left-click the tray icon or use the area shortcut. Drag a region across one or more displays. The editor opens with **Move / resize** selected, eight selection handles and compact toolbars beside the capture.
@@ -97,6 +106,19 @@ In **Move / resize**, hold **Shift** and click an annotation to select it. Shift
 | `Esc` / right-click | Cancel capture; Esc first cancels active text editing |
 
 **Full screen** captures the monitor under the cursor at native resolution. It opens the editor by default. In **Format**, choose immediate saving to skip the editor for full-screen captures. A region selection can span several monitors; it stays rectangular, including gaps between displays.
+
+## Cursor in screenshots and recordings
+
+The two cursor switches are independent:
+
+- **General → Include the cursor in screenshots** controls region and full-screen images.
+- **Record video → Include the cursor in recordings** controls the cursor and its movement in new videos.
+
+The existing screenshot preference is preserved. The new video preference is
+initially on; you can turn it off separately. Both save automatically in the
+local JSON and survive restarting the app.
+
+![Independent video cursor setting](assets/video-settings-en-light.png)
 
 ## Record, review, then save
 
@@ -162,10 +184,10 @@ downloaded separately. To publish future compatible updates, see the
 
 | Tab | Options |
 |---|---|
-| General | Language, light/dark theme, startup with Windows, notifications, remembered area, cursor inclusion, capture folder |
+| General | Language, light/dark theme, startup with Windows, notifications, remembered area, screenshot cursor, capture folder |
 | Global shortcuts | Independently enable, disable and change area, full-screen and video shortcuts |
 | Format | PNG/JPEG, JPEG quality 1–100, full-screen editing or immediate save |
-| Record video | Default microphone and computer-audio switches |
+| Record video | Video cursor, microphone and computer-audio switches |
 | Updates | Manual checking and optional startup checks for GitHub releases |
 
 Preferences save automatically; confirm shortcut changes with **Apply**. The full-screen shortcut starts disabled, with `Ctrl+Shift+F10` suggested. Occupied shortcuts produce an error while the previous working combination is retained.
@@ -180,6 +202,8 @@ Settings are stored atomically in **LumaShot.settings.json beside the script or 
 <summary>Dark theme</summary>
 
 ![LumaShot in dark mode](assets/interface-en-dark.png)
+
+![Video settings in dark mode](assets/video-settings-en-dark.png)
 
 </details>
 

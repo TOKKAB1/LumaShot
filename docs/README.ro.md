@@ -4,7 +4,7 @@
 
 [English](../README.md) · **Română** · [Русский](README.ru.md)
 
-Aplicație pentru Windows cu selecție pe mai multe monitoare, adnotări și înregistrare video. Versiunea **v5 (5.0.0)** include teme luminoasă și întunecată în verde petrol, interfață RO/RU/EN și setări portabile. Capturile rămân locale: fără cont, încărcare online sau telemetrie.
+Aplicație pentru Windows cu selecție pe mai multe monitoare, adnotări și înregistrare video. Versiunea **v5 (5.0.1)** include teme luminoasă și întunecată în verde petrol, interfață RO/RU/EN și setări portabile. Capturile rămân locale: fără cont, încărcare online sau telemetrie.
 
 ![LumaShot în română](../assets/interface-ro.png)
 
@@ -13,7 +13,7 @@ Aplicație pentru Windows cu selecție pe mai multe monitoare, adnotări și în
 [**Descarcă pentru Windows**](https://github.com/TOKKAB1/LumaShot/releases/latest)
 
 Descarcă installerul publicat în Releases și extrage ZIP-ul, dacă este cazul.
-Pentru v5, fișierul se numește **LumaShot-Setup-5.0.0-Windows-x64.exe**.
+Pentru v5, fișierul se numește **LumaShot-Setup-5.0.1-Windows-x64.exe**.
 Nu ai nevoie de Python. Instalarea este disponibilă în RO/RU/EN, pentru
 utilizatorul curent, cu scurtătură opțională pe desktop.
 
@@ -32,6 +32,15 @@ python LumaShot.py
 Bibliotecile PySide6 și SoundCard sunt indicate în [requirements.txt](../requirements.txt). NumPy și CFFI se instalează împreună cu SoundCard. Ai nevoie de internet la instalarea lor; aplicația funcționează local.
 
 Programul este într-un singur fișier **LumaShot.py**, cu pictogramele incluse. Poți descărca și [doar scriptul](https://github.com/TOKKAB1/LumaShot/raw/refs/heads/main/LumaShot.py), apoi instala `PySide6==6.12.0 SoundCard==0.4.6`. Păstrează notificările de licență din el. Fișierul ICO este opțional pentru rularea Python.
+
+## Construirea unui EXE (opțional)
+
+Pune [BUILD_LUMASHOT.bat](../BUILD_LUMASHOT.bat) lângă PY, ICO și requirements.txt
+și pornește-l prin dublu clic. Creează un mediu separat `.lumashot-build`,
+instalează bibliotecile și produce **LumaShot.exe în același dosar**.
+Versiunea EXE-ului se citește din APP_VERSION în Python. Ai nevoie de Python
+x64 și internet pentru descărcarea bibliotecilor. EXE-ul și dosarul de lucru
+sunt ignorate de Git; installerul se publică separat în Releases.
 
 ## Capturi și adnotări
 
@@ -57,6 +66,17 @@ Ai creion, linie, săgeată, dreptunghi, text, evidențiere și pași numerotaț
 | `Esc` / clic dreapta | Anulează captura; Esc renunță mai întâi la textul în curs |
 
 **Ecran complet** capturează monitorul de sub cursor, la rezoluția nativă. Implicit deschide editorul; în **Format** poți alege salvarea imediată în dosarul implicit. Pentru mai multe monitoare într-o singură imagine folosește selectarea unei zone. Dreptunghiul include și golurile dintre ecrane.
+
+## Cursor separat pentru capturi și video
+
+- **General → Include cursorul în capturile de ecran** se aplică imaginilor, atât pentru zonă, cât și pentru ecran complet.
+- **Înregistrare video → Include cursorul în video** se aplică cursorului și mișcării lui în filmările noi.
+
+Bifele sunt independente. Alegerea existentă pentru capturi se păstrează;
+noua opțiune pentru video este inițial pornită și poate fi oprită separat.
+Ambele se salvează automat în JSON și se păstrează la repornire.
+
+![Setarea separată pentru cursorul din video](../assets/video-settings-ro-light.png)
 
 ## Înregistrare, previzualizare și salvare
 
@@ -118,10 +138,10 @@ separat. Pentru publicarea actualizărilor viitoare vezi [ghidul](UPDATES.md).
 
 | Filă | Opțiuni |
 |---|---|
-| General | Limbă, temă, pornire cu Windows, notificări, memorarea zonei, cursor, dosar |
+| General | Limbă, temă, pornire cu Windows, notificări, memorarea zonei, cursor în capturi, dosar |
 | Scurtături globale | Activare/dezactivare și combinații independente pentru zonă, ecran complet și video |
 | Format | PNG/JPEG, calitate JPEG 1–100, editor sau salvare imediată pentru ecran complet |
-| Înregistrare video | Preferințe separate pentru microfon și sunetul calculatorului |
+| Înregistrare video | Cursor în video, microfon și sunetul calculatorului |
 | Actualizări | Verificare manuală și opțională la pornire pentru versiuni de pe GitHub |
 
 Setările se salvează automat; scurtăturile se confirmă cu **Aplică**. Scurtătura pentru ecran complet este inițial dezactivată, cu propunerea `Ctrl+Shift+F10`. Dacă o combinație este ocupată, aplicația păstrează combinația anterioară funcțională.
@@ -136,6 +156,8 @@ Preferințele se scriu în **LumaShot.settings.json lângă script sau EXE**. Do
 <summary>Tema întunecată</summary>
 
 ![Tema întunecată](../assets/interface-ro-dark.png)
+
+![Setări video în tema întunecată](../assets/video-settings-ro-dark.png)
 
 </details>
 

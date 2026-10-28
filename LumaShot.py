@@ -1,7 +1,7 @@
 # Original LumaShot code and artwork: MIT. Bundled icons retain their own notices.
 LUMASHOT_LICENSE = 'MIT License\n\nCopyright (c) 2026 TOKKAB1\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the "Software"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n'
 
-# LumaShot 5.0.0 — Python + PySide6. Run: python LumaShot.py
+# LumaShot 5.0.1 — Python + PySide6. Run: python LumaShot.py
 """All user-visible copy, shared by the dashboard, tray and capture editor."""
 
 LANGUAGES = {"ro": "Română", "ru": "Русский", "en": "English"}
@@ -147,7 +147,8 @@ for code, additions in {
         "light": "Luminos", "dark": "Întunecat",
         "notifications": "Notificări după copiere și salvare",
         "remember_area": "Memorează ultima zonă selectată",
-        "include_cursor": "Include cursorul în captură",
+        "include_cursor": "Include cursorul în capturile de ecran",
+        "include_video_cursor": "Include cursorul în video",
         "hotkey_label": "Captură de zonă", "full_hotkey": "Ecran complet",
         "button_only": "Dezactivată — folosește butonul",
         "shortcut_unavailable": "Scurtătură indisponibilă. Alege alta sau folosește butonul.",
@@ -164,6 +165,7 @@ for code, additions in {
         "notifications": "Уведомлять о копировании и сохранении",
         "remember_area": "Запоминать последнюю выбранную область",
         "include_cursor": "Включать курсор в снимок",
+        "include_video_cursor": "Включать курсор в видео",
         "hotkey_label": "Снимок области", "full_hotkey": "Весь экран",
         "button_only": "Отключено — используйте кнопку",
         "shortcut_unavailable": "Сочетание недоступно. Выберите другое или используйте кнопку.",
@@ -180,6 +182,7 @@ for code, additions in {
         "notifications": "Notify after copying and saving",
         "remember_area": "Remember the last selected area",
         "include_cursor": "Include the cursor in screenshots",
+        "include_video_cursor": "Include the cursor in recordings",
         "hotkey_label": "Area capture", "full_hotkey": "Full screen",
         "button_only": "Disabled — use the button",
         "shortcut_unavailable": "Shortcut unavailable. Choose another or use the button.",
@@ -202,7 +205,8 @@ for code, additions in {
         "tip_theme": "Schimbă aspectul aplicației, meniului din tray și editorului.",
         "tip_notifications": "Afișează o notificare Windows după copiere sau salvare, inclusiv salvarea imediată.",
         "tip_remember_area": "Reutilizează ultima zonă copiată sau salvată pe același monitor. Captura completă nu o înlocuiește.",
-        "tip_include_cursor": "Include cursorul în poziția sa din momentul capturii, înainte de selectarea zonei.",
+        "tip_include_cursor": "Include cursorul în capturile de ecran, în poziția sa din momentul capturii. Nu modifică setarea pentru video.",
+        "tip_include_video_cursor": "Afișează cursorul și mișcarea lui în înregistrările video noi. Nu modifică setarea pentru capturile de ecran.",
         "tip_enable_hotkey": "Bifează pentru activare sau debifează pentru dezactivare, apoi apasă Aplică. Butonul de captură rămâne disponibil.",
         "tip_apply": "Confirmă combinația de taste și activarea sau dezactivarea acestei scurtături.",
         "tip_hotkey": "Apasă combinația dorită, apoi Aplică. Modificarea nu devine activă până la confirmare.",
@@ -223,7 +227,8 @@ for code, additions in {
         "tip_theme": "Изменить оформление приложения, меню в трее и редактора.",
         "tip_notifications": "Показывать уведомление Windows после копирования или сохранения, в том числе мгновенного.",
         "tip_remember_area": "Восстановить последнюю скопированную или сохранённую область на том же мониторе. Снимок всего экрана её не заменяет.",
-        "tip_include_cursor": "Включить курсор в его положении на момент снимка, до выделения области.",
+        "tip_include_cursor": "Включать курсор в снимки экрана в его положении на момент снимка. Не влияет на запись видео.",
+        "tip_include_video_cursor": "Показывать курсор и его движение в новых видеозаписях. Не влияет на снимки экрана.",
         "tip_enable_hotkey": "Установите или снимите флажок и нажмите «Применить». Кнопка снимка остаётся доступной.",
         "tip_apply": "Подтвердить комбинацию клавиш и включение или отключение этого сочетания.",
         "tip_hotkey": "Нажмите нужное сочетание, затем «Применить». Изменение действует только после подтверждения.",
@@ -244,7 +249,8 @@ for code, additions in {
         "tip_theme": "Change the appearance of the app, tray menu and editor.",
         "tip_notifications": "Show a Windows notification after copying or saving, including immediate saves.",
         "tip_remember_area": "Restore the last copied or saved area on the same monitor. Full-screen captures do not replace it.",
-        "tip_include_cursor": "Include the cursor at its position when the screen is captured, before selecting an area.",
+        "tip_include_cursor": "Include the cursor in screenshots at its position when captured. Does not change the video setting.",
+        "tip_include_video_cursor": "Show the cursor and its movement in new video recordings. Does not change the screenshot setting.",
         "tip_enable_hotkey": "Check to enable or uncheck to disable, then click Apply. The capture button stays available.",
         "tip_apply": "Confirm this key combination and whether this shortcut is enabled or disabled.",
         "tip_hotkey": "Press your preferred combination, then Apply. Changes take effect only after confirmation.",
@@ -1582,7 +1588,7 @@ class JsonSettings:
         self.error = ""
         self.on_error = None
         self.data = dict(language="ro", theme="light", start_windows=False, notifications=True, remember_area=False,
-                         include_cursor=False, capture_hotkey_enabled=True, capture_hotkey="",
+                         include_cursor=False, include_video_cursor=True, capture_hotkey_enabled=True, capture_hotkey="",
                          full_hotkey_enabled=False, full_hotkey="Ctrl+Shift+F10",
                          record_hotkey_enabled=True, record_hotkey="Ctrl+Shift+F11", save_format="PNG",
                          jpeg_quality=95, full_action="edit", last_area={}, microphone=False,
@@ -3135,7 +3141,7 @@ import urllib.request
 import urllib.parse
 from zipfile import ZipFile, BadZipFile
 
-APP_VERSION = "5.0.0"
+APP_VERSION = "5.0.1"
 UPDATE_REPOSITORY = "TOKKAB1/LumaShot"
 UPDATE_PAGE = "https://github.com/" + UPDATE_REPOSITORY + "/releases/latest"
 UPDATE_API = "https://api.github.com/repos/" + UPDATE_REPOSITORY + "/releases/latest"
@@ -3665,6 +3671,7 @@ class MainWindow(QMainWindow):
         form.addRow(self.startup_check)
         for key, default in (("notifications", True), ("remember_area", False), ("include_cursor", False)):
             checkbox = ContrastCheckBox(self.t(key))
+            checkbox.setObjectName(key)
             checkbox.setToolTip(wrapped_tip(self.t("tip_" + key)))
             checkbox.setChecked(self.option(key, default))
             checkbox.toggled.connect(lambda checked, k=key: self.settings.setValue(k, checked))
@@ -3773,6 +3780,12 @@ class MainWindow(QMainWindow):
         video_form = QVBoxLayout(video)
         video_form.setContentsMargins(20, 18, 20, 18)
         video_form.setSpacing(14)
+        video_cursor = ContrastCheckBox(self.t("include_video_cursor"))
+        video_cursor.setObjectName("include_video_cursor")
+        video_cursor.setToolTip(wrapped_tip(self.t("tip_include_video_cursor")))
+        video_cursor.setChecked(self.option("include_video_cursor", True))
+        video_cursor.toggled.connect(lambda value: self.settings.setValue("include_video_cursor", value))
+        video_form.addWidget(video_cursor)
         for key in ("microphone", "system_audio"):
             check = ContrastCheckBox(self.t(key))
             check.setToolTip(wrapped_tip(self.t(key + "_tip")))
@@ -4103,7 +4116,9 @@ class MainWindow(QMainWindow):
         bounds = desktop_bounds()
         grab = DesktopGrab(bounds)
         try:
-            pix = QPixmap.fromImage(grab.frame(self.option("include_cursor")))
+            include_cursor = (self.option("include_video_cursor", True) if self.capture_mode == "record"
+                              else self.option("include_cursor"))
+            pix = QPixmap.fromImage(grab.frame(include_cursor))
         finally:
             grab.close()
         cls = RecordingOverlay if self.capture_mode == "record" else CaptureOverlay
@@ -4166,7 +4181,7 @@ class MainWindow(QMainWindow):
             import soundcard
             self.recording_draft = VideoDraft()
             path = self.recording_draft.path
-            recording = VideoRecording(rect, path, self.option("include_cursor"), self)
+            recording = VideoRecording(rect, path, self.option("include_video_cursor", True), self)
             self.recording = recording
             recording.finished.connect(self.recording_finished)
             if self.record_controls is None:

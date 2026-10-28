@@ -2,6 +2,15 @@
 
 This file describes the source version included in this repository. It does not imply that a GitHub Release has been published.
 
+## 5.0.1
+
+- Separate cursor preferences for screenshots and video recordings.
+- Keep the existing screenshot choice; show the cursor in new recordings by default.
+- Persist both switches independently in the local JSON.
+- Apply the matching cursor setting to recording selection previews and video frames.
+- Add translated checkboxes and tooltips in RO/RU/EN, with screenshots refreshed in both themes.
+- Include the standalone BAT builder; ignore local build files in Git.
+
 ## v5 (5.0.0)
 
 - Fixed the OCR window opening behind the always-on-top capture overlay on Windows; it now opens above the capture and receives keyboard focus.
